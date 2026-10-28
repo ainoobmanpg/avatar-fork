@@ -28,6 +28,11 @@ def source_bytes(path):
     return path.read_bytes().replace(b'\r\n', b'\n')
 
 
+def write_metadata(path, text):
+    with path.open('w', encoding='utf-8', newline='') as stream:
+        stream.write(text.replace('\n', '\r\n'))
+
+
 def build(output):
     manifest = json.loads((ROOT / 'package.json').read_text(encoding='utf-8-sig'))
     version = manifest['version']
@@ -64,6 +69,7 @@ def build(output):
     with zipfile.ZipFile(zip_data, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(files.items()):
             item = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
+            item.create_system = 0
             item.compress_type = zipfile.ZIP_DEFLATED
             item.external_attr = 0o100644 << 16
             archive.writestr(item, data)
@@ -113,10 +119,10 @@ def build(output):
     if version in versions and versions[version] != release_manifest:
         raise ValueError('This version already has different release contents; increment the version')
     versions[version] = release_manifest
-    (output / 'index.json').write_text(json.dumps(listing, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    write_metadata(output / 'index.json', json.dumps(listing, ensure_ascii=False, indent=2) + '\n')
     sums = {name: digest((output / name).read_bytes()) for name in [zip_name, unity_name, 'index.json']}
-    (output / 'SHA256SUMS.txt').write_text(''.join(f'{value}  {name}\n' for name, value in sums.items()), encoding='utf-8')
-    (output / 'contents.json').write_text(json.dumps({'version': version, 'zip': sorted(files), 'unitypackage': sorted(entries), 'sha256': sums}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    write_metadata(output / 'SHA256SUMS.txt', ''.join(f'{value}  {name}\n' for name, value in sums.items()))
+    write_metadata(output / 'contents.json', json.dumps({'version': version, 'zip': sorted(files), 'unitypackage': sorted(entries), 'sha256': sums}, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps({'version': version, 'output': str(output.resolve()), 'files': len(files), 'sha256': sums}))
 
 
