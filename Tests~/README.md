@@ -34,3 +34,5 @@
 Python 3で`python scripts~/build-release.py --output 配布先の空フォルダー`を実行し、`python Tests~/CheckRelease.py --dir 同じフォルダー`で内容・GUID・ライセンス・ハッシュを照合する。ZIPはVPM用、unitypackageはUnityへの直接導入用。生成した`index.json`をVPMリポジトリに反映し、対応するGitHub Releaseのファイルと同時に公開する。過去に公開した版の配布ファイルと一覧を置き換えたり削除したりしない。
 
 CIではこの梱包検査を行う。Unity内の回帰試験やアップロードをCIで実行したことにはならない。
+
+配布物を再生成する基準環境はWindows・Python 3.14.7（zlib 1.3.1.zlib-ng）。CIも同じ環境を使う。圧縮ライブラリが異なると、同梱内容が同じでも圧縮後のSHA-256が変わることがあるため、公開済みの配布物を別環境で再圧縮して差し替えない。

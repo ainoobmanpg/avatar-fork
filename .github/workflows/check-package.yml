@@ -6,10 +6,16 @@ permissions:
   contents: read
 jobs:
   package:
-    runs-on: ubuntu-24.04
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.14.7'
+          architecture: x64
+      - name: Check release build runtime
+        run: python -c "import sys,zlib; print(sys.version); print(zlib.ZLIB_RUNTIME_VERSION)"
       - name: Build distribution candidates
-        run: python3 scripts~/build-release.py --output "${{ runner.temp }}/avatar-fork-release"
+        run: python scripts~/build-release.py --output "${{ runner.temp }}/avatar-fork-release"
       - name: Check archives, GUIDs, license and checksums
-        run: python3 Tests~/CheckRelease.py --dir "${{ runner.temp }}/avatar-fork-release"
+        run: python Tests~/CheckRelease.py --dir "${{ runner.temp }}/avatar-fork-release"
