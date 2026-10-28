@@ -1,0 +1,35 @@
+{
+  "name": "Avatar Fork Beta",
+  "id": "com.ainoobmanpg.avatar-fork.repository",
+  "url": "https://raw.githubusercontent.com/ainoobmanpg/avatar-fork/main/vpm/index.json",
+  "author": "sakuchichi_vrc",
+  "packages": {
+    "com.ainoobmanpg.avatar-fork": {
+      "versions": {
+        "0.1.0-beta.1": {
+          "name": "com.ainoobmanpg.avatar-fork",
+          "version": "0.1.0-beta.1",
+          "displayName": "Avatar Fork",
+          "description": "Create independent editable avatar copies from the current Unity scene.",
+          "unity": "2022.3",
+          "license": "MIT",
+          "author": {
+            "name": "sakuchichi_vrc",
+            "url": "https://x.com/sakuchichi_vrc",
+            "email": "259320736+ainoobmanpg@users.noreply.github.com"
+          },
+          "documentationUrl": "https://github.com/ainoobmanpg/avatar-fork",
+          "keywords": [
+            "avatar",
+            "vrchat",
+            "editor",
+            "duplicate"
+          ],
+          "changelogUrl": "https://github.com/ainoobmanpg/avatar-fork/blob/main/CHANGELOG.md",
+          "url": "https://github.com/ainoobmanpg/avatar-fork/releases/download/v0.1.0-beta.1/com.ainoobmanpg.avatar-fork-0.1.0-beta.1.zip",
+          "zipSHA256": "74f7764d821f238cd2795d41c93e0f2efbda6836dd7c6059d2b3835e60e60062"
+        }
+      }
+    }
+  }
+}
