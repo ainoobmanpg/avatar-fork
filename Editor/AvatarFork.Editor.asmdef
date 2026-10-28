@@ -1,0 +1,8 @@
+{
+  "name": "AvatarFork.Editor",
+  "rootNamespace": "VrcAvatarWorkspace.Branching",
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": true
+}

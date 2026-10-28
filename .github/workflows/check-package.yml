@@ -1,0 +1,15 @@
+name: Check release package
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build distribution candidates
+        run: python3 scripts~/build-release.py --output "${{ runner.temp }}/avatar-fork-release"
+      - name: Check archives, GUIDs, license and checksums
+        run: python3 Tests~/CheckRelease.py --dir "${{ runner.temp }}/avatar-fork-release"

@@ -1,0 +1,64 @@
+# 導入・更新・削除と、処理中断からの復元
+
+## 導入する前に
+
+ベータ版のため、まず制作プロジェクト全体を別の場所へバックアップする。`Assets`、`Packages`、`ProjectSettings`に加え、改名を途中で中断した場合は`Library/AvatarFork/Rename`も保全する。バックアップと制作中のプロジェクトを同じフォルダーに重ねない。
+
+Unity 2022.3向け。確認環境はWindows・Unity 2022.3.22f1。VRCアバターを扱う場合は、VRChat Creator CompanionでAvatarsプロジェクトを用意する。SDKや購入素材をこのツールが導入することはない。
+
+ALCOM / VCCでは[READMEのVPMリポジトリURL](../README.md#alcom--vccから導入する推奨)を登録し、対象のプロジェクトへAvatar Forkを追加する。プレリリース版の表示を有効にする。Unityを閉じてからパッケージを変更する。
+
+unitypackage方式はReleasesの`AvatarFork-<版>.unitypackage`を取得し、Unityの`Assets > Import Package > Custom Package…`で読み込む。配置先は`Assets/AvatarFork`。SDKや購入アバターは同梱しない。
+
+**二つの方式は併用しない。** unitypackage版からALCOM / VCCへ切り替える場合は、バックアップ後、`Assets/AvatarFork`がツール本体だけであることを確認し、このフォルダーをプロジェクト外へ保全して取り除いてからパッケージを追加する。アバターや自作素材をこのフォルダーへ入れない。逆方向では、ALCOM / VCCでAvatar Forkを削除してからunitypackageを読み込む。旧`Assets/Editor/AvatarBranching`も同時に置かない。生成したコピーは削除しない。自動で旧フォルダーを削除する仕組みは使っていない。
+
+開発用にcloneした外部フォルダーを使う場合は、Package Managerで「Add package from disk…」から`package.json`を指定する。Unityが参照している間は外部フォルダーを移動・削除しない。PowerShell 7で確認している。Windowsでは対象のUnityを閉じ、`./scripts~/install.ps1 -Project "Unityプロジェクトのパス"`でも登録できる。変更前の`Packages/manifest.json`は表示された`backup`へ保存される。
+
+## ALCOM / VCC版の更新・削除
+
+Unityを閉じてプロジェクトをバックアップし、ALCOM / VCCのパッケージ管理で更新または削除する。更新後はUnityのコンパイルエラーがなく、試験用コピーで複製・改名ができることを確かめる。削除しても生成したScene・Prefab・素材・`BranchReport.json`は残す。SDK・MA・Shader等の共有プログラムは引き続き必要になる。
+
+## unitypackage版の更新・削除
+
+更新時はプロジェクトをバックアップし、既存の`Assets/AvatarFork`がツール本体だけであることを確認してプロジェクト外へ保全し、古いツールフォルダーを取り除いてから新しいunitypackageを読み込む。旧ファイルの残留を避けるため、上書きだけで更新しない。削除時も同じツールフォルダーだけを取り除き、生成データは残す。版を戻しても生成データが更新前へ戻ることはないため、必要ならプロジェクトのバックアップを使う。
+
+## 開発用の外部フォルダー参照を更新する
+
+1. プロジェクトをバックアップし、使用中の版を`package.json`で記録する。Unityを閉じる。
+2. cloneした場合は、確認したリリースのtagへ切り替える。ZIPの場合は新しい版を別のフォルダーに展開し、古い版を残す。
+3. 同じclone先を使う場合はUnityを開き直す。ZIPの展開先を変えた場合はPackage Managerで新しい`package.json`を選び直す。導入スクリプトで登録先を変更してもよい。
+4. Consoleにコンパイルエラーがなく、Hierarchyの右クリックから操作を開けることを確認する。まず試験用のコピーで複製・改名と見た目を確かめる。
+
+以前の版へ戻す場合も、Unityを閉じて、保全した以前のパッケージを参照し直す。パッケージを戻しても、生成済みのSceneや素材は更新前へ自動復元されない。生成データを戻す必要があればプロジェクトのバックアップを使う。
+
+## 削除する
+
+Package ManagerでAvatar Forkを選び「Remove」を押す。削除後、Hierarchyの操作が消え、Consoleにエラーがないことを確認する。外部パッケージフォルダーは、ほかのプロジェクトが参照していないことを確認してから取り除く。
+
+生成済みのScene・Prefab・素材と`BranchReport.json`は制作プロジェクト内に残る。Avatar ForkはEditor用なので、生成したアバターを使うためにツールを残す必要はない。SDK・MA・Shader等の共有プログラムは、それぞれ引き続き必要になる。生成データや復元用の`Library/AvatarFork`を削除する操作とは区別する。
+
+導入スクリプトでmanifestを戻す場合はUnityを閉じ、現在のmanifestを別途保全してから、表示された`backup`を`Packages/manifest.json`へ戻す。バックアップ後に追加した別パッケージの登録も戻るため、単にAvatar Forkだけを削除する場合はPackage Managerを使う。
+
+## 複製が失敗した場合
+
+失敗した出力のSceneを完成品として使わない。元Sceneと原本素材をそのまま残し、エラーと出力フォルダーの`BranchReport.json`を確認する。失敗記録のあるフォルダーを再利用せず、原因を解消して新しい保存先へ複製する。不要な失敗出力は、原本と区別できる状態で別途保全してから整理する。
+
+## 改名の途中でUnityが終了した場合
+
+通常の例外ではツールが元のパスとファイル内容へ戻す。強制終了・電源断などで処理が途切れた場合は自動復元しない。改名を繰り返したり、GUIDを書き換えたり、Libraryを削除したりせず、次の順に確認する。
+
+1. Unityを閉じ、プロジェクト全体を別の場所へ複製して保全する。特に`Library/AvatarFork/Rename`を残す。以降は保全したプロジェクトのさらに別の復旧用コピーで作業する。
+2. `Library/AvatarFork/Rename/<操作ID>/operation.json`を開く。`folder`は改名前のフォルダー、`destination`は変更先、`previousName`と`name`は変更前後の名前。今回の操作と一致するものを選ぶ。`complete.txt`があれば素材の変更と検査は完了しているため、まず`destination`のSceneを開いて確認する。完了後に行った編集を古いバックアップで上書きしない。
+3. `complete.txt`がない場合は、`files/`が改名前の素材一式、同じ場所の`files.meta`が改名前のルートフォルダーのmetaであることを確認する。ファイルが不足している、操作の特定ができない、対象外のフォルダーに変更が及んでいる場合は、手動で推測して続けず、最初に保全した制作プロジェクトから戻す。
+4. `moves.jsonl`には移動前の`completed:false`と成功後の`completed:true`が記録される。`source`と`destination`で、今回のコピーが旧フォルダー、新フォルダー、または`AvatarForkRename_...`の一時フォルダーのどこにあるかを確認する。途中で終了すると成功後の行がないこともあるため、記録だけでなく実際のファイルも確認する。
+5. 今回のコピーに対応する現在のフォルダーと、その隣の同名`.meta`を、Unityを閉じたままプロジェクトの外へ退避する。旧・新・一時フォルダーを取り違えず、対象外のコピーや原本を移動しない。判断できない場合は保全済みのプロジェクトから戻す。Assets内にバックアップを重複配置するとGUIDが重なるため避ける。
+6. `files/`の中身を`operation.json`の`folder`へコピーし、`files.meta`をそのフォルダーの隣の`<元フォルダー名>.meta`としてコピーする。素材ごとの`.meta`と`BranchReport.json`も必ず一緒に戻す。一部の素材だけを上書きして混在させない。
+7. 復旧用プロジェクトをUnityで開き、元のScene名・素材参照・見た目・Blueprint IDを確認する。GUIDの重複やMissingの増加がないことも確認する。アップロードは行わない。問題がなければ、退避した変更後のデータと比較して必要な編集を判断する。
+
+復元と確認が済んだら、該当する操作IDの記録を`Library/AvatarFork/Rename`の外へ別途保全する。中断記録が残っている間は、同じコピーの改名を再実行できない。通常の自動復元が成功した記録には`restored.txt`が付く。`complete.txt`または`restored.txt`がある記録も容量を使うため、対応するコピーの正常動作と別のバックアップを確かめてから整理する。
+
+この手順はパス移動とファイル内容を戻すためのもの。処理後に追加した編集や、Unityの未保存状態すべてを復元するものではない。迷う場合は、操作前に保存した制作プロジェクト全体へ戻す。
+
+## 問題を報告する
+
+Unity・OS・Avatar Forkの版、複製か改名か、実行前の操作、エラーメッセージを添える。公開する前にユーザー名・絶対パス・アバター名・Blueprint IDなどを伏せる。購入素材、生成アバター、認証情報、プロジェクト全体を公開しない。`BranchReport.json`も素材の元パスを含むため、そのまま公開せず必要箇所を確認する。
