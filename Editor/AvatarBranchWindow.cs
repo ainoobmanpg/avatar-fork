@@ -17,6 +17,7 @@ namespace VrcAvatarWorkspace.Branching
         string parent = AvatarBrancher.DefaultParent;
         [NonSerialized] BranchReport result;
         string error;
+        string failedFolder;
         string rejectedSelection;
         bool showDetails;
         Vector2 scroll;
@@ -52,6 +53,8 @@ namespace VrcAvatarWorkspace.Branching
             window.minSize = new Vector2(530, 510);
             window.SetParent(AvatarBrancher.DefaultParent);
             window.candidates = root == null ? Array.Empty<GameObject>() : new[] { root };
+            window.error = null;
+            window.failedFolder = null;
             window.SetSource(root);
             window.Show();
             return window;
@@ -64,7 +67,7 @@ namespace VrcAvatarWorkspace.Branching
             ClearCompletion();
         }
 
-        void ClearCompletion() { result = null; error = null; }
+        void ClearCompletion() { result = null; if (failedFolder == null) error = null; }
 
         void SetName(string value)
         {
@@ -125,9 +128,10 @@ namespace VrcAvatarWorkspace.Branching
             EditorGUILayout.Space();
             if (candidates.Length > 1)
             {
-                int old = Math.Max(0, Array.IndexOf(candidates, source));
-                int chosen = EditorGUILayout.Popup(AvatarForkText.Candidates, old, candidates.Select(g => g == null ? AvatarForkText.Deleted : g.name).ToArray());
-                if (chosen != old) SetSource(candidates[chosen]);
+                int old = Array.IndexOf(candidates, source) + 1;
+                int chosen = EditorGUILayout.Popup(AvatarForkText.Candidates, old, new[] { AvatarForkText.OtherSource }
+                    .Concat(candidates.Select(g => g == null ? AvatarForkText.Deleted : g.name)).ToArray());
+                if (chosen != old && chosen > 0) SetSource(candidates[chosen - 1]);
             }
             var newSource = (GameObject)EditorGUILayout.ObjectField(AvatarForkText.Source, source, typeof(GameObject), true);
             if (newSource != source) SetSource(AvatarBrancher.AvatarRoot(newSource));
@@ -171,7 +175,7 @@ namespace VrcAvatarWorkspace.Branching
                 catch (Exception exception) when (IsDestinationError(exception)) { EditorGUILayout.HelpBox(exception.Message, MessageType.Warning); }
             }
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField(AvatarForkText.Destination, EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(failedFolder == null ? AvatarForkText.Destination : AvatarForkText.NextDestination, EditorStyles.boldLabel);
             EditorGUILayout.SelectableLabel(destination?.folder ?? "—", EditorStyles.wordWrappedLabel, GUILayout.MinHeight(36));
             EditorGUILayout.LabelField(AvatarForkText.Outputs, EditorStyles.wordWrappedLabel);
             if (result == null && destination != null)
@@ -194,7 +198,17 @@ namespace VrcAvatarWorkspace.Branching
             if (result == null)
                 using (new EditorGUI.DisabledScope(source == null || destination == null || EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling))
                     if (GUILayout.Button(AvatarForkText.Create, GUILayout.Height(34))) CreateBranch();
-            if (!string.IsNullOrEmpty(error)) EditorGUILayout.HelpBox(AvatarForkText.CopyFailed + "\n" + error, MessageType.Error);
+            if (!string.IsNullOrEmpty(error))
+            {
+                EditorGUILayout.HelpBox(AvatarForkText.CopyFailed + "\n" + error, MessageType.Error);
+                if (!string.IsNullOrEmpty(failedFolder))
+                {
+                    EditorGUILayout.LabelField(AvatarForkText.FailedDestination, EditorStyles.boldLabel);
+                    EditorGUILayout.SelectableLabel(failedFolder, EditorStyles.wordWrappedLabel, GUILayout.MinHeight(36));
+                    EditorGUILayout.HelpBox(AvatarForkText.FailedOutputNote, MessageType.Warning);
+                    if (GUILayout.Button(AvatarForkText.CopyFailureInstructions)) Application.OpenURL(AvatarForkText.CopyFailureUrl);
+                }
+            }
             if (result != null)
             {
                 EditorGUILayout.Space();
@@ -212,8 +226,15 @@ namespace VrcAvatarWorkspace.Branching
         void CreateBranch()
         {
             ClearCompletion();
+            error = null;
+            failedFolder = null;
             try { result = AvatarBrancher.Create(source, parent, branchName); }
-            catch (Exception exception) { error = exception.Message; Debug.LogError("[Avatar Fork] " + AvatarForkText.CopyFailed + "\n" + error); }
+            catch (Exception exception)
+            {
+                error = exception.Message;
+                failedFolder = exception.Data[AvatarBrancher.FailedFolderKey] as string;
+                Debug.LogError("[Avatar Fork] " + AvatarForkText.CopyFailed + "\n" + error + (failedFolder == null ? "" : "\n" + failedFolder));
+            }
             Repaint();
         }
 

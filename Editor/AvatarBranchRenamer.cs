@@ -24,6 +24,14 @@ namespace VrcAvatarWorkspace.Branching
 
     public static partial class AvatarBrancher
     {
+        internal const string RecoveryRequiredKey = "AvatarFork.RecoveryRequired";
+
+        static Exception RecoveryRequired(Exception error)
+        {
+            error.Data[RecoveryRequiredKey] = true;
+            return error;
+        }
+
         sealed class RenamePlan
         {
             public BranchReport report;
@@ -61,12 +69,12 @@ namespace VrcAvatarWorkspace.Branching
                     BranchRenamePreview interrupted;
                     try { interrupted = JsonUtility.FromJson<BranchRenamePreview>(File.ReadAllText(operation, Utf8)); }
                     catch (Exception error) when (error is ArgumentException || error is IOException)
-                    { throw new InvalidOperationException(AvatarForkText.CorruptRecovery + operation, error); }
+                    { throw RecoveryRequired(new InvalidOperationException(AvatarForkText.CorruptRecovery + operation, error)); }
                     if (interrupted == null || string.IsNullOrEmpty(interrupted.folder) || string.IsNullOrEmpty(interrupted.destination))
-                        throw new InvalidOperationException(AvatarForkText.CorruptRecovery + operation);
+                        throw RecoveryRequired(new InvalidOperationException(AvatarForkText.CorruptRecovery + operation));
                     if (interrupted != null && (string.Equals(folder, interrupted.folder, StringComparison.OrdinalIgnoreCase)
                         || string.Equals(folder, interrupted.destination, StringComparison.OrdinalIgnoreCase)))
-                        throw new InvalidOperationException(AvatarForkText.InterruptedRename + recordFolder);
+                        throw RecoveryRequired(new InvalidOperationException(AvatarForkText.InterruptedRename + recordFolder));
                 }
             var pending = new Stack<string>();
             pending.Push(folder);
@@ -80,10 +88,16 @@ namespace VrcAvatarWorkspace.Branching
                 }
             if (!File.Exists(folder + "/" + ReportName))
                 throw new InvalidOperationException(AvatarForkText.SelectCopy);
-            var report = JsonUtility.FromJson<BranchReport>(File.ReadAllText(folder + "/" + ReportName, Utf8));
-            if (report == null || report.version != 1 || report.status != "Complete" || report.folder != folder
-                || string.IsNullOrEmpty(report.branchName) || report.branchName != Path.GetFileName(folder))
-                throw new InvalidOperationException(AvatarForkText.NamingRecord);
+            string reportPath = folder + "/" + ReportName;
+            BranchReport report;
+            try { report = JsonUtility.FromJson<BranchReport>(File.ReadAllText(reportPath, Utf8)); }
+            catch (ArgumentException error) { throw RecoveryRequired(new InvalidOperationException(AvatarForkText.UnreadableReport + reportPath, error)); }
+            if (report == null) throw RecoveryRequired(new InvalidOperationException(AvatarForkText.UnreadableReport + reportPath));
+            if (report.version != 1) throw new InvalidOperationException(AvatarForkText.UnsupportedReport + reportPath);
+            if (report.status != "Complete") throw new InvalidOperationException(AvatarForkText.IncompleteCopy + reportPath);
+            if (string.IsNullOrEmpty(report.branchName)) throw new InvalidOperationException(AvatarForkText.NamingRecord + reportPath);
+            if (report.folder != folder || report.branchName != Path.GetFileName(folder))
+                throw new InvalidOperationException(AvatarForkText.RenameRecordMismatch + reportPath);
             if (Directory.GetFiles(folder, ReportName, SearchOption.AllDirectories).Length != 1)
                 throw new InvalidOperationException(AvatarForkText.ContainsCopy);
             if (FindBranchFolder(folder) != null)
@@ -297,7 +311,7 @@ namespace VrcAvatarWorkspace.Branching
                 }
                 catch (Exception restoreError)
                 {
-                    throw new IOException(AvatarForkText.RestoreFailed + backup + "\n" + error.Message + "\n" + restoreError.Message, error);
+                    throw RecoveryRequired(new IOException(AvatarForkText.RestoreFailed + backup + "\n" + error.Message + "\n" + restoreError.Message, error));
                 }
                 throw new InvalidOperationException(AvatarForkText.RenameRestored + error.Message, error);
             }

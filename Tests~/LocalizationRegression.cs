@@ -63,7 +63,7 @@ class EditorCommand
                         string[] placeholders = Regex.Matches(text, @"\{\d+\}").Cast<Match>().Select(m => m.Value).OrderBy(x => x).ToArray();
                         Check(placeholders.SequenceEqual(Regex.Matches(english[property.Name], @"\{\d+\}").Cast<Match>().Select(m => m.Value).OrderBy(x => x)), "matching placeholders: " + property.Name);
                     }
-                    string.Format(text, "a", "b", "c");
+                    string.Format(text, "a", "b", "c", "d", "e");
                 }
             }
             EditorPrefs.DeleteKey(PreferenceKey);

@@ -7,13 +7,15 @@
 1. 対象のUnityを閉じ、`./Tests~/PrepareRegression.ps1 -Project "検証専用Unityプロジェクトのパス"`を実行します。`Assets/AvatarForkRegression`へ自作の試験コードだけを配置します。既存の同名フォルダーには上書きしません。
 2. Unityを開き、コンパイルが終わったらSceneを保存します。`Tools > Avatar Fork Tests > Run regression tests (test project only)`を実行します。
 3. Consoleの完了表示と`Library/AvatarFork/Regression/result.json`の各`success:true`を確認します。失敗した場合はConsoleの例外も確認します。
-4. 試験は`Assets/99_検証用/AvatarBrancher_Regression_*`、`AvatarFork_Rename_*`、`AvatarFork_RenameSafety_*`、`AvatarFork_Release_*`、`AvatarFork_Localization_*`とAssets直下の`AvatarForkRoot_*`に合成素材を作ります。結果の`work`が今回のフォルダーです。検証プロジェクトごと保全し、制作プロジェクトへ混ぜないでください。
+4. 試験は`Assets/99_検証用/AvatarBrancher_Regression_*`、`AvatarFork_Rename_*`、`AvatarFork_RenameSafety_*`、`AvatarFork_Release_*`、`AvatarFork_Localization_*`、`AvatarFork_UiReview_*`とAssets直下の`AvatarForkRoot_*`に合成素材を作ります。結果の`work`が今回のフォルダーです。検証プロジェクトごと保全し、制作プロジェクトへ混ぜないでください。
 
 バッチ実行の場合は同じ準備の後、Unity Editorへ`-batchmode -projectPath "検証専用Unityプロジェクトのパス" -executeMethod AvatarForkRegressionRunner.RunAll -quit -logFile "ログのパス"`を渡します。失敗時は終了コード1です。既存のUnityが同じプロジェクトを開いていないことを確認してください。
 
 複製42条件、一括改名24条件、Scene保護4条件に加え、`ReleaseRegression.cs`で禁止名・入れ子・中断記録・バイナリ素材の停止などを確認します。外部フォルダーを参照するUPM導入時は、Packagesパスの解決も確認します。Unity MCPがなくても実行できます。
 
 実行器はEnglish・日本語の両方で全試験を実行し、結果を`en`・`ja`別に保存します。`LocalizationRegression.cs`ではAssets直下と選択した親フォルダーへの作成、採番、改名・再複製、禁止先の拒否、言語変更時の入力・完了結果の維持、全表示文言の有無と書式を確認します。試験中だけ製品の言語設定`com.ainoobmanpg.avatar-fork.uiLanguage`を書き換え、終了時に元の値と設定の有無を戻します。この設定は同じPCのUnity Editor間で共有するため、同時に他のUnityで言語設定を変更しないでください。Unityを強制終了すると復元処理を通らないため、開始時の値を控えてください。ほかのEditorPrefsは削除・変更しません。
+
+`UiReviewRegression.cs`では、外部参照と未保存素材の診断、禁止名の理由、不足ファイル・Shader includeのパス、保存名の衝突、作成後の失敗と再試行、改名を拒否する記録の条件を確認します。
 
 自動試験とは別に、Unity上で両言語の複製・名前変更・共有一覧を開き、入力保持、完了後の作成先、エラー、フォルダー選択のキャンセルと新規フォルダー作成を操作確認します。フォルダー選択はOS標準ダイアログを使い、ほかのOSの表示は別途確認します。
 

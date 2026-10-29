@@ -14,6 +14,7 @@ namespace VrcAvatarWorkspace.Branching
         string folder;
         string requestedName;
         string error;
+        bool needsRecovery;
         [NonSerialized] BranchRenamePreview preview;
         [NonSerialized] BranchReport result;
         Vector2 scroll;
@@ -32,10 +33,10 @@ namespace VrcAvatarWorkspace.Branching
             };
         }
 
-        [MenuItem("Assets/Avatar Fork…", false, 2000)]
+        [MenuItem("Assets/Avatar Fork/Rename Copy…", false, 2000)]
         static void OpenSelected() { Open(SelectedFolder()); }
 
-        [MenuItem("Assets/Avatar Fork…", true)]
+        [MenuItem("Assets/Avatar Fork/Rename Copy…", true)]
         static bool CanOpenSelected() { return SelectedFolder() != null; }
 
         static string SelectedFolder()
@@ -54,6 +55,7 @@ namespace VrcAvatarWorkspace.Branching
             window.preview = null;
             window.result = null;
             window.error = null;
+            window.needsRecovery = false;
             window.Show();
             return window;
         }
@@ -70,11 +72,13 @@ namespace VrcAvatarWorkspace.Branching
             requestedName = EditorGUILayout.TextField(AvatarForkText.NewName, requestedName ?? "");
             if (EditorGUI.EndChangeCheck()) { preview = null; result = null; error = null; }
             EditorGUILayout.HelpBox(AvatarForkText.RenameNote, MessageType.Info);
-            EditorGUILayout.HelpBox(AvatarForkText.RenameCustomNote, MessageType.None);
+            EditorGUILayout.LabelField(AvatarForkText.RenamePreserved, EditorStyles.wordWrappedLabel);
+            EditorGUILayout.Space();
+            EditorGUILayout.HelpBox(AvatarForkText.RenameCustomNote, MessageType.Warning);
             if (GUILayout.Button(AvatarForkText.PreviewRename))
             {
                 try { preview = AvatarBrancher.PreviewRename(folder, requestedName); error = null; }
-                catch (Exception exception) { preview = null; error = exception.Message; }
+                catch (Exception exception) { preview = null; error = exception.Message; needsRecovery = exception.Data.Contains(AvatarBrancher.RecoveryRequiredKey); }
             }
             if (preview != null)
             {
@@ -89,10 +93,14 @@ namespace VrcAvatarWorkspace.Branching
                     if (GUILayout.Button(AvatarForkText.ApplyRename, GUILayout.Height(34)))
                     {
                         try { result = AvatarBrancher.Rename(folder, requestedName); folder = result.folder; preview = null; error = null; }
-                        catch (Exception exception) { error = exception.Message; }
+                        catch (Exception exception) { error = exception.Message; needsRecovery = exception.Data.Contains(AvatarBrancher.RecoveryRequiredKey); }
                     }
             }
-            if (!string.IsNullOrEmpty(error)) EditorGUILayout.HelpBox(error, MessageType.Error);
+            if (!string.IsNullOrEmpty(error))
+            {
+                EditorGUILayout.HelpBox(error, MessageType.Error);
+                if (needsRecovery && GUILayout.Button(AvatarForkText.RecoveryInstructions)) Application.OpenURL(AvatarForkText.RecoveryUrl);
+            }
             if (result != null)
             {
                 EditorGUILayout.HelpBox(AvatarForkText.RenameComplete, MessageType.Info);

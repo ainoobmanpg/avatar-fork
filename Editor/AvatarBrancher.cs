@@ -66,6 +66,7 @@ namespace VrcAvatarWorkspace.Branching
     {
         public const string ReportName = "BranchReport.json";
         public const string DefaultParent = "Assets";
+        internal const string FailedFolderKey = "AvatarFork.FailedFolder";
         static readonly Regex GuidReference = new Regex(@"\bguid:\s*([0-9a-fA-F]{32})\b", RegexOptions.Compiled);
         static readonly Regex ObjectReference = new Regex(@"\{\s*fileID:\s*-?\d+\s*,\s*guid:\s*([0-9a-fA-F]{32})\s*,\s*type:\s*\d+\s*\}", RegexOptions.Compiled);
         static readonly Regex Include = new Regex("(#\\s*include(?:_with_pragmas)?\\s*)\"([^\"]+)\"", RegexOptions.Compiled);
@@ -152,11 +153,12 @@ namespace VrcAvatarWorkspace.Branching
                 branchName = destination.name, folder = folder, prefab = destination.prefab, scene = destination.scene
             };
             var plan = new Plan { dirty = dirty, branchName = destination.name };
-            var preview = EditorSceneManager.NewPreviewScene();
+            Scene preview = default;
             GameObject anchor = null;
             GameObject clone = null;
             try
             {
+                preview = EditorSceneManager.NewPreviewScene();
                 EditorUtility.DisplayProgressBar(AvatarForkText.CopyTitle, AvatarForkText.ReadAvatar, .02f);
                 anchor = EditorUtility.CreateGameObjectWithHideFlags("AvatarBranchWorkspace", HideFlags.HideAndDontSave);
                 SceneManager.MoveGameObjectToScene(anchor, preview);
@@ -205,19 +207,26 @@ namespace VrcAvatarWorkspace.Branching
             }
             catch (Exception error)
             {
+                error.Data[FailedFolderKey] = folder;
                 report.status = "Failed";
                 report.assets = plan.assets.Values.ToArray();
                 report.shared = plan.shared.ToArray();
                 report.missingSourceReferences = plan.missingSources.ToArray();
                 report.problems = new[] { error.Message };
-                WriteReport(report);
+                try { WriteReport(report); }
+                catch (Exception reportError)
+                {
+                    var failure = new IOException(error.Message + "\n" + AvatarForkText.ReportWriteFailed + reportError.Message, error);
+                    failure.Data[FailedFolderKey] = folder;
+                    throw failure;
+                }
                 throw;
             }
             finally
             {
                 if (clone != null) Object.DestroyImmediate(clone);
                 if (anchor != null) Object.DestroyImmediate(anchor);
-                EditorSceneManager.ClosePreviewScene(preview);
+                if (preview.IsValid()) EditorSceneManager.ClosePreviewScene(preview);
                 EditorUtility.ClearProgressBar();
             }
             }
@@ -236,11 +245,19 @@ namespace VrcAvatarWorkspace.Branching
                     var value = property.objectReferenceValue;
                     var transform = value is Component c ? c.transform : (value as GameObject)?.transform;
                     if (transform != null && !EditorUtility.IsPersistent(value) && transform != root.transform && !transform.IsChildOf(root.transform))
-                        throw new InvalidOperationException(AvatarForkText.Format(AvatarForkText.OutsideSceneReference, component.name, property.propertyPath));
+                        throw new InvalidOperationException(ReferenceError(AvatarForkText.OutsideSceneReference, component, property, value));
                     if (value != null && transform == null && !EditorUtility.IsPersistent(value) && !(value is MonoScript))
-                        throw new InvalidOperationException(AvatarForkText.Format(AvatarForkText.UnsavedReference, component.name, property.propertyPath));
+                        throw new InvalidOperationException(ReferenceError(AvatarForkText.UnsavedReference, component, property, value));
                 }
             }
+        }
+
+        static string ReferenceError(string message, Component component, SerializedProperty property, Object value)
+        {
+            var target = value is Component c ? c.transform : (value as GameObject)?.transform;
+            return AvatarForkText.Format(message, AnimationUtility.CalculateTransformPath(component.transform, null),
+                ObjectNames.NicifyVariableName(component.GetType().Name), property.displayName,
+                target == null ? value.name : AnimationUtility.CalculateTransformPath(target, null), property.propertyPath);
         }
 
         static void Unpack(GameObject root)
@@ -297,7 +314,7 @@ namespace VrcAvatarWorkspace.Branching
             if (Shared(path)) { plan.shared.Add(path); return; }
             RequireAssetsPath(path);
             if (AssetDatabase.IsValidFolder(path)) throw new InvalidOperationException(AvatarForkText.FolderReference + path);
-            if (!File.Exists(path)) throw new FileNotFoundException(AvatarForkText.AssetMissing, path);
+            if (!File.Exists(path)) throw new FileNotFoundException(AvatarForkText.AssetMissing + ": " + path, path);
             if (plan.assets.ContainsKey(path)) return;
             string guid = AssetDatabase.AssetPathToGUID(path);
             if (guid.Length != 32 || !File.Exists(path + ".meta")) throw new InvalidOperationException(AvatarForkText.AssetIdentity + path);
@@ -452,8 +469,9 @@ namespace VrcAvatarWorkspace.Branching
                     asset.destination = collision ? AssetDestination(report.folder, AssetCategory(asset.source), asset.originalName, report.branchName, asset.nameKey) : group.Key;
                 }
             }
-            if (plan.assets.Values.Select(a => a.destination).Distinct(StringComparer.OrdinalIgnoreCase).Count() != plan.assets.Count)
-                throw new InvalidOperationException(AvatarForkText.DuplicateIdentity);
+            var collisions = plan.assets.Values.GroupBy(a => a.destination, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).ToArray();
+            if (collisions.Length > 0)
+                throw new InvalidOperationException(AvatarForkText.DuplicateIdentity + "\n" + string.Join("\n", collisions.SelectMany(g => g.Select(a => a.source + " → " + g.Key))));
         }
 
         static void CopyFiles(Plan plan, BranchReport report)
@@ -845,7 +863,7 @@ namespace VrcAvatarWorkspace.Branching
         static string ResolveInclude(string owner, string include)
         {
             if (include.StartsWith("Assets/", StringComparison.Ordinal) || include.StartsWith("Packages/", StringComparison.Ordinal))
-                return File.Exists(include) ? Normalize(include) : throw new FileNotFoundException(AvatarForkText.IncludeMissing + owner, include);
+                return File.Exists(include) ? Normalize(include) : throw new FileNotFoundException(AvatarForkText.IncludeMissing + include + "\nShader: " + owner, include);
             string absolute = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(owner) ?? "", include));
             string project = Path.GetFullPath(".").TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             if (File.Exists(absolute))
@@ -855,7 +873,7 @@ namespace VrcAvatarWorkspace.Branching
             }
             string builtin = Path.Combine(EditorApplication.applicationContentsPath, "CGIncludes", include);
             if (File.Exists(builtin)) return null;
-            throw new FileNotFoundException(AvatarForkText.IncludeUnresolved + owner, include);
+            throw new FileNotFoundException(AvatarForkText.IncludeUnresolved + include + "\nShader: " + owner, include);
         }
 
         static bool IsText(string path)
@@ -886,10 +904,16 @@ namespace VrcAvatarWorkspace.Branching
         internal static string RequireBranchName(string requestedName)
         {
             string name = (requestedName ?? "").Trim();
-            if (name.Length == 0 || name.EndsWith(".", StringComparison.Ordinal) || IgnoredName(name)
-                || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.IndexOfAny("<>:\"/\\|?*".ToCharArray()) >= 0
-                || name.Any(char.IsControl) || Regex.IsMatch(name, @"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", RegexOptions.IgnoreCase))
-                throw new ArgumentException(AvatarForkText.InvalidName);
+            if (name.Length == 0) throw new ArgumentException(AvatarForkText.EmptyName);
+            if (name.Any(char.IsControl)) throw new ArgumentException(AvatarForkText.InvalidNameControl);
+            int invalid = name.IndexOfAny(Path.GetInvalidFileNameChars().Concat("<>:\"/\\|?*".ToCharArray()).Distinct().ToArray());
+            if (invalid >= 0) throw new ArgumentException(AvatarForkText.Format(AvatarForkText.InvalidNameCharacter, name[invalid]));
+            if (name.StartsWith(".", StringComparison.Ordinal)) throw new ArgumentException(AvatarForkText.InvalidNameStart);
+            if (name.EndsWith(".", StringComparison.Ordinal)) throw new ArgumentException(AvatarForkText.Format(AvatarForkText.InvalidNameEnd, "."));
+            if (name.EndsWith("~", StringComparison.Ordinal)) throw new ArgumentException(AvatarForkText.Format(AvatarForkText.InvalidNameEnd, "~"));
+            if (name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException(AvatarForkText.Format(AvatarForkText.InvalidNameEnd, name.Substring(name.Length - 4)));
+            if (name.Equals("cvs", StringComparison.OrdinalIgnoreCase) || Regex.IsMatch(name, @"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", RegexOptions.IgnoreCase))
+                throw new ArgumentException(AvatarForkText.Format(AvatarForkText.ReservedName, name));
             return name;
         }
         static bool IgnoredName(string name)

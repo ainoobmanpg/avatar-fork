@@ -169,7 +169,7 @@ class EditorCommand
             Check(originalColors.SequenceEqual(AssetDatabase.LoadAssetAtPath<GameObject>(Copy(swappedB, Copy(swapped, swappedPath))).GetComponentInChildren<Renderer>().sharedMaterials.Select(m => m.color)) && AvatarBrancher.Verify(swappedB.folder).status == "Complete", "rebranching preserves external model mappings with renamed material assets");
             root.GetComponent<MeshFilter>().sharedMesh = mesh;root.GetComponent<MeshRenderer>().sharedMaterial = child;
             var textureImporter = AssetImporter.GetAtPath(texturePath);EditorUtility.SetDirty(textureImporter);
-            bool dirtyImporterRejected = false;try { AvatarBrancher.Create(root, work + "/Branches", "DirtyImporter"); } catch (InvalidOperationException e) { dirtyImporterRejected = (e.Message.Contains("読込設定") || e.Message.Contains("import settings")); }
+            bool dirtyImporterRejected = false;try { AvatarBrancher.Create(root, work + "/Branches", "DirtyImporter"); } catch (InvalidOperationException e) { dirtyImporterRejected = e.Message.Contains("Apply") && e.Message.Contains(texturePath); }
             Check(dirtyImporterRejected, "unapplied importer settings are rejected");EditorUtility.ClearDirty(textureImporter);
             var outside = new GameObject("Outside");UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(outside, scene);
             var constraint = root.AddComponent<ParentConstraint>();constraint.AddSource(new ConstraintSource { sourceTransform = outside.transform, weight = 1 });

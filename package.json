@@ -1,6 +1,6 @@
 {
   "name": "com.ainoobmanpg.avatar-fork",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "displayName": "Avatar Fork",
   "description": "Create independent editable avatar copies from the current Unity scene.",
   "unity": "2022.3",

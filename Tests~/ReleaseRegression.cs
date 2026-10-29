@@ -49,7 +49,10 @@ class EditorCommand
                 Check(Reject(() => AvatarBrancher.PreviewRename(branch.folder, name)), "reject ignored rename: " + name);
             Directory.CreateDirectory(record);
             File.WriteAllText(record + "/operation.json", JsonUtility.ToJson(new BranchRenamePreview { folder = branch.folder, destination = work + "/Interrupted" }));
-            Check(Reject(() => AvatarBrancher.Rename(branch.folder, "Blocked")), "reject incomplete operation before another rename");
+            bool interruptedRejected = false;
+            try { AvatarBrancher.Rename(branch.folder, "Blocked"); }
+            catch (InvalidOperationException e) { interruptedRejected = e.Data.Contains("AvatarFork.RecoveryRequired"); }
+            Check(interruptedRejected, "reject incomplete operation and offer recovery before another rename");
             Check(!Directory.Exists(work + "/Blocked") && AvatarBrancher.Verify(branch.folder).status == "Complete", "incomplete operation rejection leaves copy unchanged");
             File.WriteAllText(record + "/restored.txt", "Restored");
             Check(AvatarBrancher.PreviewRename(branch.folder, "Allowed").name == "Allowed", "restored operation does not block later rename");
@@ -57,7 +60,7 @@ class EditorCommand
             File.WriteAllText(record + "/operation.json", "{");
             bool corruptRejected = false;
             try { AvatarBrancher.PreviewRename(branch.folder, "BlockedCorrupt"); }
-            catch (InvalidOperationException e) { corruptRejected = (e.Message.Contains("中断記録") || e.Message.Contains("interrupted operation record")) && e.Message.Contains("operation.json"); }
+            catch (InvalidOperationException e) { corruptRejected = (e.Message.Contains("中断記録") || e.Message.Contains("interrupted operation record")) && e.Message.Contains("operation.json") && e.Data.Contains("AvatarFork.RecoveryRequired"); }
             Check(corruptRejected, "reject corrupt recovery records with their location");
             File.WriteAllText(record + "/restored.txt", "Restored");
             var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(AvatarBrancher).Assembly);
