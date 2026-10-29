@@ -147,8 +147,13 @@ namespace VrcAvatarWorkspace.Branching
         internal static string AddToHierarchy => Choose("Add to Hierarchy", "Hierarchyへの追加を再試行");
         internal static string SelectInHierarchy => Choose("Select in Hierarchy", "Hierarchyで選択");
         internal static string PlacementNote => Choose("The copy is added at the end of the source Scene's roots. The Scene is not saved automatically. Undo removes the added avatar; generated files remain.", "元Sceneのルート末尾にコピーを追加します。Sceneは自動保存しません。Undoで追加だけを取り消せます。生成したファイルは残ります。");
-        internal static string PlacementFailed => Choose("Copy files are complete, but adding the avatar to the Scene failed. Retry reuses the same files.", "ファイルの複製は完了しましたが、Sceneへの追加に失敗しました。再試行では同じファイルを使います。");
+        internal static string PlacementFailed => Choose("Copy files are complete, but the Scene instance could not be selected or added. See the reason below.", "ファイルの複製は完了しましたが、Scene内の個体の選択または追加ができませんでした。下の理由を確認してください。");
         internal static string PlacementSceneClosed => Choose("Open the source Scene again, then retry adding the copy.", "複製元のSceneを開いてから、追加を再試行してください。");
+        internal static string PlacementUnresolved => Choose("The previously added instance could not be found. Reopen its Scene or choose an existing copy below. To add a new instance, use the separate button.", "以前追加した個体を見つけられません。配置先のSceneを開くか、下の欄で既存のコピーを選んでください。新しく追加する場合は、専用のボタンを使ってください。");
+        internal static string SelectPlacedCopy => Choose("Choose a Scene instance connected to this copy's Prefab.", "このコピーのPrefabに接続したScene内の個体を選んでください。");
+        internal static string ExistingCopy => Choose("Existing copy", "既存のコピー");
+        internal static string UseExistingCopy => Choose("Use the selected instance", "選んだ個体を使う");
+        internal static string AddAnotherCopy => Choose("Add a new instance to the source Scene", "元Sceneへ新しい個体を追加する");
         internal static string ParentShear => Choose("The parent's rotation and non-uniform scale cannot be preserved when placing this avatar at the Scene root. Use a parent with uniform scale before copying.", "親の回転と不均一なスケールによる変形をSceneのルートで再現できません。親のスケールを均一にしてから複製してください。");
         internal static string ShowProject => Choose("Show in Project", "Projectで表示");
         internal static string SharedItems => Choose("Shared items…", "共通で使うもの…");

@@ -39,6 +39,10 @@
 
 `HierarchyRegression.cs`は、元Scene末尾への自動追加、複数Scene、未保存ファイル保全、素材参照とBlueprint ID、Undo・Redo、追加失敗後の再試行、親付きアバター、コピー単位の識別、改名と再複製を合成データで確認します。`PrepareRegression.ps1`で配置し、全試験とともに日英の両方で実行します。
 
+`PlacementIdentityRegression.cs`は、配置後のScene間移動と親変更、Sceneの保存・再読み込み・改名、同一Prefabの複数個体と生成Sceneがある状態での個体識別を確認します。配置先を閉じた場合や元の個体を削除した場合は、別個体の自動採用も新規追加も行わず、明示した選択・新規追加だけを受け付けます。作成画面を残した改名後の保存先更新と再配置、生成Sceneの親付き・無効階層・複数個体の改名と手動名維持も確認します。
+
+`HierarchyRegression.cs`では、追加・保存・改名・別の編集を行った後のUndo・Redoで、個体数・名前・Prefabとの接続先・生成ファイルが整合することも確認します。インスタンス生成後・Undo登録後に例外を注入する試験と、Unity強制終了時の復元は含みません。
+
 ## 配布物の確認
 
 Python 3で`python scripts~/build-release.py --output 配布先の空フォルダー`を実行し、`python Tests~/CheckRelease.py --dir 同じフォルダー`で内容・GUID・ライセンス・ハッシュを照合する。ZIPはVPM用、unitypackageはUnityへの直接導入用。生成した`index.json`をVPMリポジトリに反映し、対応するGitHub Releaseのファイルと同時に公開する。過去に公開した版の配布ファイルと一覧を置き換えたり削除したりしない。

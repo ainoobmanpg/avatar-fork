@@ -18,7 +18,11 @@ namespace VrcAvatarWorkspace.Branching
         [NonSerialized] BranchReport result;
         [NonSerialized] BranchScenePlacement placement;
         [NonSerialized] GameObject placed;
+        string reportGuid;
+        string prefabGuid;
+        GameObject placementChoice;
         string placementError;
+        string resultError;
         string error;
         string failedFolder;
         string rejectedSelection;
@@ -29,6 +33,42 @@ namespace VrcAvatarWorkspace.Branching
         {
             SceneHierarchyHooks.addItemsToGameObjectContextMenu += AddAvatarMenu;
             SceneHierarchyHooks.addItemsToSceneHeaderContextMenu += AddSceneMenu;
+        }
+
+        void OnEnable()
+        {
+            AvatarBrancher.CopyRenamed += CopyRenamed;
+            EditorApplication.projectChanged += RefreshCompletion;
+        }
+
+        void OnDisable()
+        {
+            AvatarBrancher.CopyRenamed -= CopyRenamed;
+            EditorApplication.projectChanged -= RefreshCompletion;
+            placement?.Dispose();
+        }
+
+        void CopyRenamed(BranchReport report) { RefreshCompletion(); }
+
+        void RefreshResult()
+        {
+            if (result == null || string.IsNullOrEmpty(reportGuid)) return;
+            string path = AssetDatabase.GUIDToAssetPath(reportGuid);
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) throw new IOException(AvatarForkText.OutputMissing);
+            var current = JsonUtility.FromJson<BranchReport>(File.ReadAllText(path));
+            if (current == null || current.version != 1 || current.status != "Complete"
+                || current.folder + "/" + AvatarBrancher.ReportName != path
+                || string.IsNullOrEmpty(prefabGuid) || AssetDatabase.GUIDToAssetPath(prefabGuid) != current.prefab)
+                throw new IOException(AvatarForkText.OutputMissing);
+            result = current;
+            branchName = current.branchName;
+        }
+
+        void RefreshCompletion()
+        {
+            try { RefreshResult(); resultError = null; }
+            catch (Exception exception) { resultError = exception.Message; }
+            Repaint();
         }
 
         static void AddAvatarMenu(GenericMenu menu, GameObject selected)
@@ -72,10 +112,15 @@ namespace VrcAvatarWorkspace.Branching
 
         void ClearCompletion()
         {
+            placement?.Dispose();
             result = null;
             placement = null;
             placed = null;
+            reportGuid = null;
+            prefabGuid = null;
+            placementChoice = null;
             placementError = null;
+            resultError = null;
             if (failedFolder == null) error = null;
         }
 
@@ -222,14 +267,29 @@ namespace VrcAvatarWorkspace.Branching
             if (result != null)
             {
                 EditorGUILayout.Space();
+                if (!string.IsNullOrEmpty(resultError)) EditorGUILayout.HelpBox(resultError, MessageType.Error);
                 EditorGUILayout.HelpBox(AvatarForkText.Format(AvatarForkText.Complete, result.assets.Length + result.extractedMaterials.Length), MessageType.Info);
                 EditorGUILayout.LabelField(AvatarForkText.ResultBlueprint, EditorStyles.wordWrappedLabel);
                 if (result.missingSourceReferences.Length > 0)
                     EditorGUILayout.HelpBox(AvatarForkText.Format(AvatarForkText.MissingReferences, result.missingSourceReferences.Length), MessageType.Warning);
                 EditorGUILayout.HelpBox(AvatarForkText.PlacementNote, MessageType.Info);
                 if (!string.IsNullOrEmpty(placementError)) EditorGUILayout.HelpBox(AvatarForkText.PlacementFailed + "\n" + placementError, MessageType.Error);
-                if (GUILayout.Button(placed == null ? AvatarForkText.AddToHierarchy : AvatarForkText.SelectInHierarchy)) PlaceResult();
-                if (GUILayout.Button(AvatarForkText.ShowProject)) EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<DefaultAsset>(result.folder));
+                placed = placement?.Resolve();
+                using (new EditorGUI.DisabledScope(placement != null && placement.HasPlaced && placed == null))
+                    if (GUILayout.Button(placed == null ? AvatarForkText.AddToHierarchy : AvatarForkText.SelectInHierarchy)) PlaceResult();
+                if (placement != null && placement.HasPlaced && placed == null)
+                {
+                    EditorGUILayout.HelpBox(AvatarForkText.PlacementUnresolved, MessageType.Warning);
+                    placementChoice = (GameObject)EditorGUILayout.ObjectField(AvatarForkText.ExistingCopy, placementChoice, typeof(GameObject), true);
+                    using (new EditorGUI.DisabledScope(placementChoice == null))
+                        if (GUILayout.Button(AvatarForkText.UseExistingCopy)) BindResult();
+                    if (GUILayout.Button(AvatarForkText.AddAnotherCopy)) PlaceAnotherResult();
+                }
+                if (GUILayout.Button(AvatarForkText.ShowProject))
+                {
+                    try { RefreshResult(); EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<DefaultAsset>(result.folder)); resultError = null; }
+                    catch (Exception exception) { resultError = exception.Message; }
+                }
                 if (GUILayout.Button(AvatarForkText.SharedItems)) SharedWindow.Open(result.shared);
             }
             EditorGUILayout.EndScrollView();
@@ -244,6 +304,8 @@ namespace VrcAvatarWorkspace.Branching
             {
                 placement = source == null ? null : new BranchScenePlacement(source);
                 result = AvatarBrancher.Create(source, parent, branchName);
+                reportGuid = AssetDatabase.AssetPathToGUID(result.folder + "/" + AvatarBrancher.ReportName);
+                prefabGuid = AssetDatabase.AssetPathToGUID(result.prefab);
             }
             catch (Exception exception)
             {
@@ -257,10 +319,32 @@ namespace VrcAvatarWorkspace.Branching
 
         void PlaceResult()
         {
+            Place(false);
+        }
+
+        void PlaceAnotherResult()
+        {
+            Place(true);
+        }
+
+        void BindResult()
+        {
+            try
+            {
+                RefreshResult();
+                placement.Bind(placementChoice, result);
+                PlaceResult();
+            }
+            catch (Exception exception) { placementError = exception.Message; }
+        }
+
+        void Place(bool createAnother)
+        {
             try
             {
                 if (result == null || placement == null) return;
-                if (placed == null) placed = placement.Add(result);
+                RefreshResult();
+                placed = placement.Add(result, createAnother);
                 placementError = null;
                 Selection.activeGameObject = placed;
                 EditorGUIUtility.PingObject(placed);

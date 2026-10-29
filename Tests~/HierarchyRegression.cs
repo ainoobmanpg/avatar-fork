@@ -99,11 +99,12 @@ class EditorCommand
             Check(scene.rootCount == roots + 1, "retry selects an existing instance without duplicating it");
             Undo.PerformUndo();
             string prefabPath = copy.prefab;
-            copy.prefab = work + "/Missing.prefab";
+            string missingPrefab = work + "/Missing.prefab";
+            Check(string.IsNullOrEmpty(AssetDatabase.MoveAsset(prefabPath, missingPrefab)), "temporarily move output to test a failed retry");
             Call(window, "PlaceResult");
-            Check(Get(window, "placementError") != null && Get(window, "result") == copy && scene.rootCount == roots, "placement failure preserves complete files without a partial instance");
-            copy.prefab = prefabPath;
-            Call(window, "PlaceResult");
+            Check(Get(window, "placementError") != null && Get(window, "result") != null && scene.rootCount == roots, "mismatched output rejects retry before instantiation and preserves complete files");
+            Check(string.IsNullOrEmpty(AssetDatabase.MoveAsset(missingPrefab, prefabPath)), "restore output before retry");
+            Call(window, "PlaceAnotherResult");
             placed = Placed(scene, copy);
             Check(Get(window, "placementError") == null && scene.rootCount == roots + 1, "placement retry reuses the completed output");
             Check(CopyFolder(placed.transform.GetChild(0).gameObject) == copy.folder, "child selection identifies the owning avatar copy");
@@ -116,6 +117,26 @@ class EditorCommand
             var renamed = AvatarBrancher.Rename(copy.folder, "Renamed");
             Check(placed.name == "Renamed" && scene.isDirty && beforeRename.SequenceEqual(File.ReadAllBytes(scene.path)), "rename follows the external Scene instance without saving the Scene");
             Check(placed.transform.parent == parent.transform, "rename preserves a moved copy's parent");
+            Undo.RecordObject(root, "Unrelated edit");
+            root.name = "Edited source";
+            Undo.FlushUndoRecordObjects();
+            Undo.IncrementCurrentGroup();
+            Undo.PerformUndo();
+            Check(root.name == "Source" && placed.name == "Renamed", "Undo of a later edit does not undo the rename");
+            Undo.PerformUndo();
+            Check(placed.name == "Generated" && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(placed) == renamed.prefab,
+                "Undo restores the external instance name while keeping the renamed Prefab connection");
+            Undo.PerformUndo();
+            Check(placed == null && File.Exists(renamed.prefab), "Undo after rename removes the original placement and preserves renamed output");
+            Undo.PerformRedo();
+            placed = scene.GetRootGameObjects().SelectMany(g => g.GetComponentsInChildren<Transform>(true)).Select(t => t.gameObject)
+                .Single(g => PrefabUtility.GetNearestPrefabInstanceRoot(g) == g && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(g) == renamed.prefab);
+            Check(placed.name == "Generated" && !placed.activeSelf, "Redo of the placement restores one individual connected to the renamed Prefab");
+            Undo.PerformRedo();
+            Check(placed.name == "Renamed" && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(placed) == renamed.prefab,
+                "Redo restores the renamed external instance without changing its Prefab connection");
+            Undo.PerformRedo();
+            Check(root.name == "Edited source" && placed.name == "Renamed", "Redo of the later edit preserves the renamed individual");
             placed.transform.SetParent(null, true);
             placed.name = "ManualName";
             EditorSceneManager.SaveScene(scene);

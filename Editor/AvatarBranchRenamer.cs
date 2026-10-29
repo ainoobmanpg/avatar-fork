@@ -25,6 +25,7 @@ namespace VrcAvatarWorkspace.Branching
     public static partial class AvatarBrancher
     {
         internal const string RecoveryRequiredKey = "AvatarFork.RecoveryRequired";
+        internal static event Action<BranchReport> CopyRenamed;
 
         static Exception RecoveryRequired(Exception error)
         {
@@ -328,12 +329,19 @@ namespace VrcAvatarWorkspace.Branching
                 if (temporaryScene.IsValid() && temporaryScene.isLoaded && SceneManager.sceneCount > 1)
                     EditorSceneManager.CloseScene(temporaryScene, true);
             }
+            Undo.IncrementCurrentGroup();
+            int renameGroup = Undo.GetCurrentGroup();
             foreach (var root in externalRoots.Where(g => g != null))
             {
+                Undo.RecordObject(root, AvatarForkText.RenameTitle);
                 root.name = plan.preview.name;
                 PrefabUtility.RecordPrefabInstancePropertyModifications(root);
                 EditorSceneManager.MarkSceneDirty(root.scene);
             }
+            Undo.FlushUndoRecordObjects();
+            Undo.CollapseUndoOperations(renameGroup);
+            Undo.IncrementCurrentGroup();
+            CopyRenamed?.Invoke(plan.report);
             return plan.report;
         }
 
@@ -440,9 +448,14 @@ namespace VrcAvatarWorkspace.Branching
                 bool modified = false;
                 if (scenePath == plan.paths[plan.report.scene])
                 {
-                    var roots = scene.GetRootGameObjects().Where(g => PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(g) == prefab).ToArray();
-                    if (roots.Length != 1) throw new InvalidOperationException(AvatarForkText.AmbiguousAvatar);
-                    if (roots[0].name == plan.preview.previousName) { roots[0].name = plan.preview.name; modified = true; }
+                    var roots = scene.GetRootGameObjects().SelectMany(g => g.GetComponentsInChildren<Transform>(true)).Select(t => t.gameObject)
+                        .Where(g => PrefabUtility.GetNearestPrefabInstanceRoot(g) == g && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(g) == prefab);
+                    foreach (var root in roots.Where(g => g.name == plan.preview.previousName))
+                    {
+                        root.name = plan.preview.name;
+                        PrefabUtility.RecordPrefabInstancePropertyModifications(root);
+                        modified = true;
+                    }
                 }
                 foreach (var sceneRoot in scene.GetRootGameObjects()) modified |= RewriteRenameProperties(sceneRoot.GetComponentsInChildren<Component>(true), plan.references);
                 if (modified && !EditorSceneManager.SaveScene(scene)) throw new IOException(AvatarForkText.SaveRenamedScene);

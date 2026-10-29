@@ -8,20 +8,24 @@ using UnityEngine.SceneManagement;
 
 namespace VrcAvatarWorkspace.Branching
 {
-    sealed class BranchScenePlacement
+    sealed class BranchScenePlacement : IDisposable
     {
-        readonly Scene originalScene;
-        readonly string scenePath;
+        Scene originalScene;
+        string sceneGuid;
         readonly Vector3 position;
         readonly Quaternion rotation;
         readonly Vector3 scale;
         readonly bool active;
+        GameObject placed;
+        GlobalObjectId placedId;
+        int instanceId;
+        public bool HasPlaced { get; private set; }
 
         public BranchScenePlacement(GameObject source)
         {
             if (source == null) throw new ArgumentException(AvatarForkText.SelectHierarchy);
             originalScene = source.scene;
-            scenePath = originalScene.path;
+            sceneGuid = AssetDatabase.AssetPathToGUID(originalScene.path);
             position = source.transform.position;
             rotation = source.transform.rotation;
             scale = source.transform.lossyScale;
@@ -31,19 +35,66 @@ namespace VrcAvatarWorkspace.Branching
             for (int i = 0; i < 16; i++)
                 if (Mathf.Abs(expected[i] - actual[i]) > .0001f * Mathf.Max(1, Mathf.Abs(expected[i])))
                     throw new InvalidOperationException(AvatarForkText.ParentShear);
+            EditorApplication.hierarchyChanged += Track;
+            EditorSceneManager.sceneSaved += SceneSaved;
+            EditorSceneManager.sceneOpened += SceneOpened;
+            EditorSceneManager.sceneClosing += SceneClosing;
         }
 
-        public GameObject Add(BranchReport report)
+        public void Dispose()
         {
-            var scene = originalScene.IsValid() && originalScene.isLoaded ? originalScene : SceneManager.GetSceneByPath(scenePath);
+            EditorApplication.hierarchyChanged -= Track;
+            EditorSceneManager.sceneSaved -= SceneSaved;
+            EditorSceneManager.sceneOpened -= SceneOpened;
+            EditorSceneManager.sceneClosing -= SceneClosing;
+        }
+
+        void SceneSaved(Scene scene) { Track(); }
+        void SceneOpened(Scene scene, OpenSceneMode mode)
+        {
+            if (!string.IsNullOrEmpty(sceneGuid) && AssetDatabase.AssetPathToGUID(scene.path) == sceneGuid) originalScene = scene;
+        }
+        void SceneClosing(Scene scene, bool removingScene) { Track(); }
+
+        void Track()
+        {
+            if (originalScene.IsValid() && originalScene.isLoaded)
+                sceneGuid = AssetDatabase.AssetPathToGUID(originalScene.path);
+            if (placed == null) return;
+            instanceId = placed.GetInstanceID();
+            placedId = GlobalObjectId.GetGlobalObjectIdSlow(placed);
+        }
+
+        public GameObject Resolve()
+        {
+            if (placed == null && instanceId != 0) placed = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+            if (placed == null && placedId.identifierType != 0)
+                placed = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(placedId) as GameObject;
+            Track();
+            return placed;
+        }
+
+        public void Bind(GameObject instance, BranchReport report)
+        {
+            if (instance == null || !instance.scene.IsValid() || !instance.scene.isLoaded || EditorSceneManager.IsPreviewScene(instance.scene)
+                || PrefabUtility.GetNearestPrefabInstanceRoot(instance) != instance
+                || PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(instance) != report.prefab)
+                throw new InvalidOperationException(AvatarForkText.SelectPlacedCopy);
+            placed = instance;
+            HasPlaced = true;
+            Track();
+        }
+
+        public GameObject Add(BranchReport report, bool createAnother = false)
+        {
+            var existing = Resolve();
+            if (!createAnother && existing != null) return existing;
+            if (!createAnother && HasPlaced) throw new InvalidOperationException(AvatarForkText.PlacementUnresolved);
+            var scene = originalScene.IsValid() && originalScene.isLoaded ? originalScene : SceneManager.GetSceneByPath(AssetDatabase.GUIDToAssetPath(sceneGuid));
             if (!scene.IsValid() || !scene.isLoaded || EditorSceneManager.IsPreviewScene(scene))
                 throw new InvalidOperationException(AvatarForkText.PlacementSceneClosed);
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(report.prefab);
             if (prefab == null) throw new IOException(AvatarForkText.OutputMissing);
-            var existing = scene.GetRootGameObjects().SelectMany(g => g.GetComponentsInChildren<Transform>(true)).Select(t => t.gameObject)
-                .Where(g => PrefabUtility.GetNearestPrefabInstanceRoot(g) == g && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(g) == report.prefab).ToArray();
-            if (existing.Length > 1) throw new InvalidOperationException(AvatarForkText.AmbiguousAvatar);
-            if (existing.Length == 1) return existing[0];
             Undo.IncrementCurrentGroup();
             int group = Undo.GetCurrentGroup();
             GameObject instance = null;
@@ -60,6 +111,9 @@ namespace VrcAvatarWorkspace.Branching
                 PrefabUtility.RecordPrefabInstancePropertyModifications(instance.transform);
                 PrefabUtility.RecordPrefabInstancePropertyModifications(instance);
                 EditorSceneManager.MarkSceneDirty(scene);
+                placed = instance;
+                HasPlaced = true;
+                Track();
                 return instance;
             }
             catch
