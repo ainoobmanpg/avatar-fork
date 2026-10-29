@@ -35,6 +35,10 @@
 
 `RenameSafetyRegression.cs` は追加の合成試験。Sceneで手動変更したルート名、複数Sceneの並び順、閉じたSceneの見出しを改名後も維持することと、名前のないSceneがある場合に変更せず停止する4条件を確認する。`AVATAR_FORK_SAFETY_REPORT` を指定するとJSONを保存する。戻り値のsuccessがtrueであることを確認し、workに示された今回の `Assets/99_検証用/AvatarFork_RenameSafety_*` だけを除去する。
 
+## Hierarchy追加の確認
+
+`HierarchyRegression.cs`は、元Scene末尾への自動追加、複数Scene、未保存ファイル保全、素材参照とBlueprint ID、Undo・Redo、追加失敗後の再試行、親付きアバター、コピー単位の識別、改名と再複製を合成データで確認します。`PrepareRegression.ps1`で配置し、全試験とともに日英の両方で実行します。
+
 ## 配布物の確認
 
 Python 3で`python scripts~/build-release.py --output 配布先の空フォルダー`を実行し、`python Tests~/CheckRelease.py --dir 同じフォルダー`で内容・GUID・ライセンス・ハッシュを照合する。ZIPはVPM用、unitypackageはUnityへの直接導入用。生成した`index.json`をVPMリポジトリに反映し、対応するGitHub Releaseのファイルと同時に公開する。過去に公開した版の配布ファイルと一覧を置き換えたり削除したりしない。

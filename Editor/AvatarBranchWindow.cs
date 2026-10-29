@@ -16,6 +16,9 @@ namespace VrcAvatarWorkspace.Branching
         string branchName;
         string parent = AvatarBrancher.DefaultParent;
         [NonSerialized] BranchReport result;
+        [NonSerialized] BranchScenePlacement placement;
+        [NonSerialized] GameObject placed;
+        string placementError;
         string error;
         string failedFolder;
         string rejectedSelection;
@@ -67,7 +70,14 @@ namespace VrcAvatarWorkspace.Branching
             ClearCompletion();
         }
 
-        void ClearCompletion() { result = null; if (failedFolder == null) error = null; }
+        void ClearCompletion()
+        {
+            result = null;
+            placement = null;
+            placed = null;
+            placementError = null;
+            if (failedFolder == null) error = null;
+        }
 
         void SetName(string value)
         {
@@ -216,7 +226,9 @@ namespace VrcAvatarWorkspace.Branching
                 EditorGUILayout.LabelField(AvatarForkText.ResultBlueprint, EditorStyles.wordWrappedLabel);
                 if (result.missingSourceReferences.Length > 0)
                     EditorGUILayout.HelpBox(AvatarForkText.Format(AvatarForkText.MissingReferences, result.missingSourceReferences.Length), MessageType.Warning);
-                if (GUILayout.Button(AvatarForkText.OpenScene)) OpenResult();
+                EditorGUILayout.HelpBox(AvatarForkText.PlacementNote, MessageType.Info);
+                if (!string.IsNullOrEmpty(placementError)) EditorGUILayout.HelpBox(AvatarForkText.PlacementFailed + "\n" + placementError, MessageType.Error);
+                if (GUILayout.Button(placed == null ? AvatarForkText.AddToHierarchy : AvatarForkText.SelectInHierarchy)) PlaceResult();
                 if (GUILayout.Button(AvatarForkText.ShowProject)) EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<DefaultAsset>(result.folder));
                 if (GUILayout.Button(AvatarForkText.SharedItems)) SharedWindow.Open(result.shared);
             }
@@ -228,23 +240,34 @@ namespace VrcAvatarWorkspace.Branching
             ClearCompletion();
             error = null;
             failedFolder = null;
-            try { result = AvatarBrancher.Create(source, parent, branchName); }
+            try
+            {
+                placement = source == null ? null : new BranchScenePlacement(source);
+                result = AvatarBrancher.Create(source, parent, branchName);
+            }
             catch (Exception exception)
             {
                 error = exception.Message;
                 failedFolder = exception.Data[AvatarBrancher.FailedFolderKey] as string;
                 Debug.LogError("[Avatar Fork] " + AvatarForkText.CopyFailed + "\n" + error + (failedFolder == null ? "" : "\n" + failedFolder));
             }
+            if (result != null) PlaceResult();
             Repaint();
         }
 
-        void OpenResult()
+        void PlaceResult()
         {
-            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
-            var scene = EditorSceneManager.OpenScene(result.scene, OpenSceneMode.Single);
-            Selection.activeGameObject = scene.GetRootGameObjects().FirstOrDefault();
-            if (Selection.activeGameObject != null && SceneView.lastActiveSceneView != null)
-                SceneView.lastActiveSceneView.Frame(new Bounds(Selection.activeGameObject.transform.position + Vector3.up, Vector3.one * 1.8f), true);
+            try
+            {
+                if (result == null || placement == null) return;
+                if (placed == null) placed = placement.Add(result);
+                placementError = null;
+                Selection.activeGameObject = placed;
+                EditorGUIUtility.PingObject(placed);
+                EditorApplication.RepaintHierarchyWindow();
+            }
+            catch (Exception exception) { placementError = exception.Message; }
+            Repaint();
         }
     }
 

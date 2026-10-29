@@ -144,7 +144,12 @@ namespace VrcAvatarWorkspace.Branching
         internal static string Create => Choose("Create Copy", "複製する");
         internal static string Complete => Choose("Copy and reference check completed. Assets copied: {0}", "複製と参照の検査が完了しました。コピーした素材: {0}ファイル");
         internal static string ResultBlueprint => Choose("Blueprint ID is empty.", "Blueprint IDは空です。");
-        internal static string OpenScene => Choose("Open Scene", "Sceneを開く");
+        internal static string AddToHierarchy => Choose("Add to Hierarchy", "Hierarchyへの追加を再試行");
+        internal static string SelectInHierarchy => Choose("Select in Hierarchy", "Hierarchyで選択");
+        internal static string PlacementNote => Choose("The copy is added at the end of the source Scene's roots. The Scene is not saved automatically. Undo removes the added avatar; generated files remain.", "元Sceneのルート末尾にコピーを追加します。Sceneは自動保存しません。Undoで追加だけを取り消せます。生成したファイルは残ります。");
+        internal static string PlacementFailed => Choose("Copy files are complete, but adding the avatar to the Scene failed. Retry reuses the same files.", "ファイルの複製は完了しましたが、Sceneへの追加に失敗しました。再試行では同じファイルを使います。");
+        internal static string PlacementSceneClosed => Choose("Open the source Scene again, then retry adding the copy.", "複製元のSceneを開いてから、追加を再試行してください。");
+        internal static string ParentShear => Choose("The parent's rotation and non-uniform scale cannot be preserved when placing this avatar at the Scene root. Use a parent with uniform scale before copying.", "親の回転と不均一なスケールによる変形をSceneのルートで再現できません。親のスケールを均一にしてから複製してください。");
         internal static string ShowProject => Choose("Show in Project", "Projectで表示");
         internal static string SharedItems => Choose("Shared items…", "共通で使うもの…");
         internal static string SharedTitle => Choose("Shared Items", "共通で使うもの");

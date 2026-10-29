@@ -162,7 +162,7 @@ namespace VrcAvatarWorkspace.Branching
                 EditorUtility.DisplayProgressBar(AvatarForkText.CopyTitle, AvatarForkText.ReadAvatar, .02f);
                 anchor = EditorUtility.CreateGameObjectWithHideFlags("AvatarBranchWorkspace", HideFlags.HideAndDontSave);
                 SceneManager.MoveGameObjectToScene(anchor, preview);
-                clone = Object.Instantiate(source, anchor.transform, false);
+                clone = Object.Instantiate(source, anchor.transform, true);
                 clone.transform.SetParent(null, true);
                 clone.name = destination.name;
                 Unpack(clone);
@@ -241,6 +241,7 @@ namespace VrcAvatarWorkspace.Branching
                 while (property.Next(true))
                 {
                     if (PrefabLink(property.name)) continue;
+                    if (component == root.transform && property.propertyPath == "m_Father") continue;
                     if (property.propertyType != SerializedPropertyType.ObjectReference) continue;
                     var value = property.objectReferenceValue;
                     var transform = value is Component c ? c.transform : (value as GameObject)?.transform;

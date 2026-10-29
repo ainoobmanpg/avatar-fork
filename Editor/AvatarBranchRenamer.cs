@@ -195,6 +195,11 @@ namespace VrcAvatarWorkspace.Branching
         static BranchReport RenameSaved(string folder, string requestedName)
         {
             var plan = PrepareRename(folder, requestedName);
+            var externalRoots = Enumerable.Range(0, SceneManager.sceneCount).Select(SceneManager.GetSceneAt)
+                .Where(s => s.isLoaded && !EditorSceneManager.IsPreviewScene(s) && !Inside(s.path, plan.report.folder))
+                .SelectMany(s => s.GetRootGameObjects()).SelectMany(g => g.GetComponentsInChildren<Transform>(true)).Select(t => t.gameObject)
+                .Where(g => g.name == plan.preview.previousName && PrefabUtility.GetNearestPrefabInstanceRoot(g) == g
+                    && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(g) == plan.report.prefab).ToArray();
             var problems = Validate(plan.report, false);
             if (problems.Count > 0) throw new InvalidOperationException(string.Join("\n", problems.Take(12)));
             if (plan.preview.changes.Length == 0 && plan.preview.previousName == plan.preview.name) return plan.report;
@@ -322,6 +327,12 @@ namespace VrcAvatarWorkspace.Branching
             {
                 if (temporaryScene.IsValid() && temporaryScene.isLoaded && SceneManager.sceneCount > 1)
                     EditorSceneManager.CloseScene(temporaryScene, true);
+            }
+            foreach (var root in externalRoots.Where(g => g != null))
+            {
+                root.name = plan.preview.name;
+                PrefabUtility.RecordPrefabInstancePropertyModifications(root);
+                EditorSceneManager.MarkSceneDirty(root.scene);
             }
             return plan.report;
         }

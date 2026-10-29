@@ -8,7 +8,7 @@ if (Test-Path -LiteralPath $target) { throw '検証コードの配置先が既�
 $encoding = [System.Text.UTF8Encoding]::new($false, $true)
 $null = New-Item -ItemType Directory -Path (Join-Path $target 'Editor')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'BranchFixtureData.cs') -Destination $target
-foreach ($suite in @('Regression','RenameRegression','RenameSafetyRegression','ReleaseRegression','LocalizationRegression','UiReviewRegression')) {
+foreach ($suite in @('Regression','RenameRegression','RenameSafetyRegression','ReleaseRegression','LocalizationRegression','UiReviewRegression','HierarchyRegression')) {
     $source = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot ($suite + '.cs')), $encoding)
     $source = $source.Replace('class EditorCommand', ('public class AvatarForkTest' + $suite)).Replace('static object Execute()', 'public static object Execute()')
     [System.IO.File]::WriteAllText((Join-Path $target ('Editor/' + $suite + '.cs')), $source, $encoding)
@@ -50,6 +50,7 @@ public static class AvatarForkRegressionRunner
                     suites["release"] = JToken.FromObject(AvatarForkTestReleaseRegression.Execute());
                     suites["localization"] = JToken.FromObject(AvatarForkTestLocalizationRegression.Execute());
                     suites["uiReview"] = JToken.FromObject(AvatarForkTestUiReviewRegression.Execute());
+                    suites["hierarchy"] = JToken.FromObject(AvatarForkTestHierarchyRegression.Execute());
                 }
             }
             finally

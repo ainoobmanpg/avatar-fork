@@ -24,7 +24,7 @@ namespace VrcAvatarWorkspace.Branching
         {
             SceneHierarchyHooks.addItemsToGameObjectContextMenu += (menu, selected) => {
                 if (selected == null) return;
-                string target = AvatarBrancher.FindBranchFolder(selected.scene.path);
+                string target = AvatarBrancher.FindCopyFolder(selected);
                 if (target != null) menu.AddItem(new GUIContent(AvatarForkText.RenameMenu), false, () => Open(target));
             };
             SceneHierarchyHooks.addItemsToSceneHeaderContextMenu += (menu, scene) => {
