@@ -25,6 +25,7 @@ class EditorCommand
     }
     static object Execute()
     {
+        Passed.Clear();
         string work = "Assets/99_検証用/AvatarFork_Release_" + GUID.Generate().ToString().Substring(0, 8);
         Directory.CreateDirectory(work);
         AssetDatabase.Refresh();
@@ -56,7 +57,7 @@ class EditorCommand
             File.WriteAllText(record + "/operation.json", "{");
             bool corruptRejected = false;
             try { AvatarBrancher.PreviewRename(branch.folder, "BlockedCorrupt"); }
-            catch (InvalidOperationException e) { corruptRejected = e.Message.Contains("中断記録") && e.Message.Contains("operation.json"); }
+            catch (InvalidOperationException e) { corruptRejected = (e.Message.Contains("中断記録") || e.Message.Contains("interrupted operation record")) && e.Message.Contains("operation.json"); }
             Check(corruptRejected, "reject corrupt recovery records with their location");
             File.WriteAllText(record + "/restored.txt", "Restored");
             var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(AvatarBrancher).Assembly);
@@ -77,7 +78,7 @@ class EditorCommand
             renderer.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(binary);
             bool binaryRejected = false;
             try { AvatarBrancher.Create(root, work, "BinaryCopy"); }
-            catch (InvalidOperationException e) { binaryRejected = e.Message.Contains("バイナリ"); }
+            catch (InvalidOperationException e) { binaryRejected = (e.Message.Contains("バイナリ") || e.Message.Contains("Binary")); }
             Check(binaryRejected, "reject binary Unity assets");
             Check(!Directory.GetFiles(work + "/BinaryCopy", "*.mat", SearchOption.AllDirectories).Any(), "binary rejection copies no material with original references");
             return new { success = true, checks = Passed.ToArray(), work };

@@ -28,6 +28,7 @@ def check(directory):
         assert all(not n.startswith(('private~/', 'reports~/', 'Tests~/', '.git/')) for n in names)
         manifest = json.loads(archive.read('package.json'))
         assert b'](Tests~/' not in archive.read('README.md')
+        assert 'Editor/AvatarForkText.cs' in names and 'Editor/AvatarForkText.cs.meta' in names
         version = manifest['version']
         release = entries[version]
         assert release['name'] == manifest['name'] and release['zipSHA256'] == checksums[archives[0].name]

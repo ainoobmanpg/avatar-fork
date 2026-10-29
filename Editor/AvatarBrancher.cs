@@ -65,7 +65,7 @@ namespace VrcAvatarWorkspace.Branching
     public static partial class AvatarBrancher
     {
         public const string ReportName = "BranchReport.json";
-        public const string DefaultParent = "Assets/07_改変用/独立複製";
+        public const string DefaultParent = "Assets";
         static readonly Regex GuidReference = new Regex(@"\bguid:\s*([0-9a-fA-F]{32})\b", RegexOptions.Compiled);
         static readonly Regex ObjectReference = new Regex(@"\{\s*fileID:\s*-?\d+\s*,\s*guid:\s*([0-9a-fA-F]{32})\s*,\s*type:\s*\d+\s*\}", RegexOptions.Compiled);
         static readonly Regex Include = new Regex("(#\\s*include(?:_with_pragmas)?\\s*)\"([^\"]+)\"", RegexOptions.Compiled);
@@ -130,11 +130,11 @@ namespace VrcAvatarWorkspace.Branching
         public static BranchReport Create(GameObject source, string parent, string branchName)
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling)
-                throw new InvalidOperationException("Play Modeとコンパイルが終わってから実行してください。");
+                throw new InvalidOperationException(AvatarForkText.Busy);
             if (source == null || EditorUtility.IsPersistent(source) || !source.scene.IsValid() || EditorSceneManager.IsPreviewScene(source.scene))
-                throw new ArgumentException("Hierarchyにあるアバターを選択してください。");
+                throw new ArgumentException(AvatarForkText.SelectHierarchy);
             if (Enumerable.Range(0, SceneManager.sceneCount).Select(SceneManager.GetSceneAt).Any(s => string.IsNullOrEmpty(s.path) && s.isDirty && !EditorSceneManager.IsPreviewScene(s)))
-                throw new InvalidOperationException("名前の付いていない未保存Sceneがあります。先にSceneへ名前を付けて保存してください。名前のあるSceneの未保存変更は、そのまま複製できます。");
+                throw new InvalidOperationException(AvatarForkText.UnnamedScene);
             var destination = ResolveDestination(parent, branchName);
             CheckHierarchy(source);
 
@@ -145,7 +145,7 @@ namespace VrcAvatarWorkspace.Branching
             destination = ResolveDestination(parent, branchName);
             string folder = destination.folder;
             RequireAssetsPath(folder);
-            if (Directory.Exists(folder)) throw new IOException("出力先が既に存在します。");
+            if (Directory.Exists(folder)) throw new IOException(AvatarForkText.OutputExists);
             Directory.CreateDirectory(folder);
             var report = new BranchReport {
                 status = "Preparing", sourceAvatar = source.name, sourceScene = source.scene.path,
@@ -157,7 +157,7 @@ namespace VrcAvatarWorkspace.Branching
             GameObject clone = null;
             try
             {
-                EditorUtility.DisplayProgressBar("アバターを独立して複製", "現在の改変状態を読み取っています", .02f);
+                EditorUtility.DisplayProgressBar(AvatarForkText.CopyTitle, AvatarForkText.ReadAvatar, .02f);
                 anchor = EditorUtility.CreateGameObjectWithHideFlags("AvatarBranchWorkspace", HideFlags.HideAndDontSave);
                 SceneManager.MoveGameObjectToScene(anchor, preview);
                 clone = Object.Instantiate(source, anchor.transform, false);
@@ -166,9 +166,9 @@ namespace VrcAvatarWorkspace.Branching
                 Unpack(clone);
                 ClearUploadIdentity(clone);
                 if (PrefabUtility.SaveAsPrefabAsset(clone, report.prefab) == null)
-                    throw new IOException("現在のアバターをPrefabへ保存できませんでした。");
+                    throw new IOException(AvatarForkText.SavePrefabFailed);
                 if (!IsText(report.prefab))
-                    throw new InvalidOperationException("バイナリ形式のPrefabには対応していません。Asset SerializationをForce Textにしてから実行してください。");
+                    throw new InvalidOperationException(AvatarForkText.BinaryPrefab);
                 foreach (var path in AssetDatabase.GetDependencies(report.prefab, true)) Enqueue(plan, path, folder);
                 foreach (Match match in GuidReference.Matches(File.ReadAllText(report.prefab, Utf8))) DiscoverGuid(plan, match.Groups[1].Value, folder, report.prefab);
                 CollectLiveReferences(plan, source, folder);
@@ -185,7 +185,7 @@ namespace VrcAvatarWorkspace.Branching
                 RewriteCopies(plan, report);
                 ImportCopies(report);
 
-                EditorUtility.DisplayProgressBar("アバターを独立して複製", "保存した素材の参照を検査しています", .9f);
+                EditorUtility.DisplayProgressBar(AvatarForkText.CopyTitle, AvatarForkText.CheckReferences, .9f);
                 var problems = Validate(report);
                 CheckHashes(plan, problems);
                 if (problems.Count != 0)
@@ -193,7 +193,7 @@ namespace VrcAvatarWorkspace.Branching
 
                 var avatar = AssetDatabase.LoadAssetAtPath<GameObject>(report.prefab);
                 if (avatar == null || MissingScripts(avatar) != MissingScripts(source))
-                    throw new InvalidOperationException("複製後にコンポーネントの欠落が発生しました。");
+                    throw new InvalidOperationException(AvatarForkText.MissingComponent);
                 SaveScene(report, avatar);
                 problems = Validate(report);
                 CheckHashes(plan, problems);
@@ -225,7 +225,7 @@ namespace VrcAvatarWorkspace.Branching
 
         static void CheckHierarchy(GameObject root)
         {
-            if (MissingScripts(root) != 0) throw new InvalidOperationException("元のアバターにMissing Scriptがあります。複製前に確認してください。");
+            if (MissingScripts(root) != 0) throw new InvalidOperationException(AvatarForkText.MissingScript);
             foreach (var component in root.GetComponentsInChildren<Component>(true))
             {
                 var property = new SerializedObject(component).GetIterator();
@@ -236,9 +236,9 @@ namespace VrcAvatarWorkspace.Branching
                     var value = property.objectReferenceValue;
                     var transform = value is Component c ? c.transform : (value as GameObject)?.transform;
                     if (transform != null && !EditorUtility.IsPersistent(value) && transform != root.transform && !transform.IsChildOf(root.transform))
-                        throw new InvalidOperationException(component.name + " の " + property.propertyPath + " がアバター外のSceneオブジェクトを参照しています。");
+                        throw new InvalidOperationException(AvatarForkText.Format(AvatarForkText.OutsideSceneReference, component.name, property.propertyPath));
                     if (value != null && transform == null && !EditorUtility.IsPersistent(value) && !(value is MonoScript))
-                        throw new InvalidOperationException(component.name + " の " + property.propertyPath + " は未保存の素材です。素材を保存してから複製してください。");
+                        throw new InvalidOperationException(AvatarForkText.Format(AvatarForkText.UnsavedReference, component.name, property.propertyPath));
                 }
             }
         }
@@ -260,7 +260,7 @@ namespace VrcAvatarWorkspace.Branching
         {
             var property = serialized.FindProperty("blueprintId");
             if (property == null || property.propertyType != SerializedPropertyType.String)
-                throw new InvalidOperationException("Pipeline ManagerのBlueprint IDを確認できません。複製を停止します。");
+                throw new InvalidOperationException(AvatarForkText.BlueprintUnavailable);
             return property;
         }
 
@@ -278,10 +278,10 @@ namespace VrcAvatarWorkspace.Branching
         public static BranchDestination ResolveDestination(string parent, string requestedName)
         {
             parent = Normalize(parent).TrimEnd('/');
-            RequireAssetsPath(parent);
+            if (parent != "Assets") RequireAssetsPath(parent);
             RequireUnlinkedPath(parent);
             if (FindBranchFolder(parent + "/destination") != null)
-                throw new ArgumentException("独立複製の中へ別のコピーは作れません。コピーの外の保存先を選んでください。");
+                throw new ArgumentException(AvatarForkText.NestedCopy);
             string name = RequireBranchName(requestedName);
             string folder = parent + "/" + name;
             for (int suffix = 1; Directory.Exists(folder) || File.Exists(folder) || File.Exists(folder + ".meta") || !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(folder)); suffix++)
@@ -296,11 +296,11 @@ namespace VrcAvatarWorkspace.Branching
             if (string.IsNullOrEmpty(path) || Inside(path, folder)) return;
             if (Shared(path)) { plan.shared.Add(path); return; }
             RequireAssetsPath(path);
-            if (AssetDatabase.IsValidFolder(path)) throw new InvalidOperationException("フォルダー自体への参照は複製できません: " + path);
-            if (!File.Exists(path)) throw new FileNotFoundException("素材が見つかりません", path);
+            if (AssetDatabase.IsValidFolder(path)) throw new InvalidOperationException(AvatarForkText.FolderReference + path);
+            if (!File.Exists(path)) throw new FileNotFoundException(AvatarForkText.AssetMissing, path);
             if (plan.assets.ContainsKey(path)) return;
             string guid = AssetDatabase.AssetPathToGUID(path);
-            if (guid.Length != 32 || !File.Exists(path + ".meta")) throw new InvalidOperationException("素材の識別情報を取得できません: " + path);
+            if (guid.Length != 32 || !File.Exists(path + ".meta")) throw new InvalidOperationException(AvatarForkText.AssetIdentity + path);
             var previous = PreviousAsset(plan, path);
             string originalName = previous?.originalName ?? Path.GetFileName(path);
             var asset = new CopiedAsset {
@@ -319,7 +319,7 @@ namespace VrcAvatarWorkspace.Branching
             {
                 string path = plan.pending.Dequeue();
                 if (NativeExtensions.Contains(Path.GetExtension(path)) && !IsText(path))
-                    throw new InvalidOperationException("バイナリ形式のUnity素材には対応していません: " + path);
+                    throw new InvalidOperationException(AvatarForkText.BinaryAsset + path);
                 foreach (string dependency in AssetDatabase.GetDependencies(path, false)) Enqueue(plan, dependency, folder);
                 foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(path))
                 {
@@ -330,7 +330,7 @@ namespace VrcAvatarWorkspace.Branching
                 var importer = AssetImporter.GetAtPath(path);
                 if (importer != null)
                 {
-                    if (EditorUtility.IsDirty(importer) || plan.dirty.Contains(importer)) throw new InvalidOperationException("素材の読込設定に未保存変更があります。先にApplyしてください: " + path);
+                    if (EditorUtility.IsDirty(importer) || plan.dirty.Contains(importer)) throw new InvalidOperationException(AvatarForkText.DirtyImporter + path);
                     foreach (var value in importer.GetExternalObjectMap().Values) Enqueue(plan, AssetDatabase.GetAssetPath(value), folder);
                 }
                 foreach (string textPath in new[] { path, path + ".meta" })
@@ -453,7 +453,7 @@ namespace VrcAvatarWorkspace.Branching
                 }
             }
             if (plan.assets.Values.Select(a => a.destination).Distinct(StringComparer.OrdinalIgnoreCase).Count() != plan.assets.Count)
-                throw new InvalidOperationException("素材名の識別子が重複しました。保存先を作り直してください。");
+                throw new InvalidOperationException(AvatarForkText.DuplicateIdentity);
         }
 
         static void CopyFiles(Plan plan, BranchReport report)
@@ -464,14 +464,14 @@ namespace VrcAvatarWorkspace.Branching
                 int index = 0;
                 foreach (var asset in plan.assets.Values)
                 {
-                    EditorUtility.DisplayProgressBar("アバターを独立して複製", "素材をコピー: " + asset.originalName, .1f + .55f * index++ / Math.Max(1, plan.assets.Count));
+                    EditorUtility.DisplayProgressBar(AvatarForkText.CopyTitle, AvatarForkText.CopyAsset + asset.originalName, .1f + .55f * index++ / Math.Max(1, plan.assets.Count));
                     Directory.CreateDirectory(Path.GetDirectoryName(asset.destination));
                     File.Copy(asset.source, asset.destination, false);
                     File.WriteAllText(asset.destination + ".meta", Rewrite(File.ReadAllText(asset.source + ".meta", Utf8), asset.source + ".meta", plan), Utf8);
                     if (IsText(asset.source))
                         File.WriteAllText(asset.destination, Rewrite(File.ReadAllText(asset.source, Utf8), asset.source, plan), Utf8);
                     else if (NativeExtensions.Contains(Path.GetExtension(asset.source)))
-                        throw new InvalidOperationException("バイナリ形式のUnity素材には対応していません: " + asset.source);
+                        throw new InvalidOperationException(AvatarForkText.BinaryAsset + asset.source);
                 }
                 File.WriteAllText(report.prefab, Rewrite(File.ReadAllText(report.prefab, Utf8), report.prefab, plan), Utf8);
             }
@@ -488,14 +488,14 @@ namespace VrcAvatarWorkspace.Branching
                 if (!NativeExtensions.Contains(Path.GetExtension(asset.source)))
                 {
                     if (sourceObjects.Any(o => o != null && !(o is Shader) && (EditorUtility.IsDirty(o) || plan.dirty.Contains(o))))
-                        throw new InvalidOperationException("未保存の変更を含む読込素材があります。先に保存してください: " + asset.source);
+                        throw new InvalidOperationException(AvatarForkText.DirtyImportedAsset + asset.source);
                     continue;
                 }
                 var copies = AssetDatabase.LoadAllAssetsAtPath(asset.destination);
                 foreach (var source in sourceObjects.Where(o => o != null && (EditorUtility.IsDirty(o) || plan.dirty.Contains(o))))
                 {
                     var copy = copies.SingleOrDefault(o => SameLocalObject(source, o));
-                    if (copy == null) throw new InvalidOperationException("未保存の素材を複製へ転記できません: " + asset.source);
+                    if (copy == null) throw new InvalidOperationException(AvatarForkText.OverlayFailed + asset.source);
                     EditorUtility.CopySerialized(source, copy);
                     copy.hideFlags = plan.dirty.OriginalFlags(source);
                     EditorUtility.SetDirty(copy);
@@ -515,18 +515,18 @@ namespace VrcAvatarWorkspace.Branching
                 var mappings = materials.ToDictionary(m => m.name, m => m, StringComparer.Ordinal);
                 var sourceRenderers = original.GetComponentsInChildren<Renderer>(true);
                 var copyRenderers = AssetDatabase.LoadAssetAtPath<GameObject>(entry.destination).GetComponentsInChildren<Renderer>(true);
-                if (sourceRenderers.Length != copyRenderers.Length) throw new InvalidOperationException("モデルの構造が読み込み時に変わりました: " + entry.source);
+                if (sourceRenderers.Length != copyRenderers.Length) throw new InvalidOperationException(AvatarForkText.ModelStructure + entry.source);
                 for (int r = 0; r < sourceRenderers.Length; r++)
                 {
                     var before = sourceRenderers[r].sharedMaterials;
                     var after = copyRenderers[r].sharedMaterials;
-                    if (before.Length != after.Length) throw new InvalidOperationException("モデルのマテリアル数が読み込み時に変わりました: " + entry.source);
+                    if (before.Length != after.Length) throw new InvalidOperationException(AvatarForkText.ModelMaterialCount + entry.source);
                     for (int m = 0; m < before.Length; m++)
                         if (before[m] != null && after[m] != null && AssetDatabase.GetAssetPath(after[m]) == entry.destination)
                         {
                             string identifier = after[m].name;
                             if (mappings.TryGetValue(identifier, out var existing) && existing != before[m])
-                                throw new InvalidOperationException("モデルのマテリアル識別子が重複しています: " + entry.source + " / " + identifier);
+                                throw new InvalidOperationException(AvatarForkText.ModelMaterialIdentity + entry.source + " / " + identifier);
                             mappings[identifier] = before[m];
                         }
                 }
@@ -551,8 +551,8 @@ namespace VrcAvatarWorkspace.Branching
                     }
                     else if (plan.assets.TryGetValue(path, out var target)) copy = AssetDatabase.LoadAssetAtPath<Material>(target.destination);
                     else if (Shared(path)) copy = material;
-                    else throw new InvalidOperationException("モデルのマテリアルを分離できません: " + path);
-                    if (copy == null) throw new InvalidOperationException("モデルの複製マテリアルを読み込めません: " + path);
+                    else throw new InvalidOperationException(AvatarForkText.ExtractMaterial + path);
+                    if (copy == null) throw new InvalidOperationException(AvatarForkText.LoadMaterial + path);
                     copies[material] = copy;
                 }
                 foreach (var mapping in mappings) importer.AddRemap(new AssetImporter.SourceAssetIdentifier(typeof(Material), mapping.Key), copies[mapping.Value]);
@@ -692,28 +692,28 @@ namespace VrcAvatarWorkspace.Branching
                         string guid = match.Groups[1].Value;
                         if (BuiltinGuid(guid)) continue;
                         string dependency = AssetDatabase.GUIDToAssetPath(guid);
-                        if (string.IsNullOrEmpty(dependency)) problems.Add("参照先が見つかりません: " + file + " / " + guid);
-                        else if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add("元の素材への参照が残っています: " + file + " → " + dependency);
+                        if (string.IsNullOrEmpty(dependency)) problems.Add(AvatarForkText.ReferenceMissing + file + " / " + guid);
+                        else if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalReference + file + " → " + dependency);
                     }
                     foreach (Match match in QuotedAsset.Matches(text))
                     {
                         string dependency = match.Groups[1].Value;
-                        if (File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add("元の素材パスが残っています: " + file + " → " + dependency);
+                        if (File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
                     }
                     foreach (Match match in PlainAsset.Matches(text))
                     {
                         string dependency = match.Groups["path"].Value;
-                        if (File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add("元の素材パスが残っています: " + file + " → " + dependency);
+                        if (File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
                     }
                 }
                 foreach (string dependency in AssetDatabase.GetDependencies(path, true))
-                    if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add("Unityの依存関係に元の素材が残っています: " + path + " → " + dependency);
+                    if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalDependency + path + " → " + dependency);
                 if (Wavefront(path))
                     foreach (Match match in WavefrontReference.Matches(File.ReadAllText(path, Utf8)))
                     {
                         string absolute = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path), match.Groups[2].Value.Trim()));
                         string root = Path.GetFullPath(report.folder).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-                        if (!File.Exists(absolute) || !absolute.StartsWith(root, StringComparison.OrdinalIgnoreCase)) problems.Add("モデルの外部ファイルが複製内にありません: " + path + " / " + match.Groups[2].Value);
+                        if (!File.Exists(absolute) || !absolute.StartsWith(root, StringComparison.OrdinalIgnoreCase)) problems.Add(AvatarForkText.ExternalModelFile + path + " / " + match.Groups[2].Value);
                     }
                 if (Path.GetExtension(path).Equals(".mat", StringComparison.OrdinalIgnoreCase))
                 {
@@ -721,14 +721,14 @@ namespace VrcAvatarWorkspace.Branching
                     if (material != null && material.parent != null)
                     {
                         string dependency = AssetDatabase.GetAssetPath(material.parent);
-                        if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add("親マテリアルが元を参照しています: " + path);
+                        if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalParentMaterial + path);
                     }
                 }
                 foreach (var asset in SerializedObjects(path))
                 {
                     var serialized = new SerializedObject(asset);
                     if (requireEmptyBlueprintId && IsPipeline(asset) && !string.IsNullOrEmpty(BlueprintId(serialized).stringValue))
-                        problems.Add("アップロード先のBlueprint IDが残っています: " + path);
+                        problems.Add(AvatarForkText.BlueprintRemains + path);
                     var property = serialized.GetIterator();
                     while (property.Next(true))
                         if (property.propertyType == SerializedPropertyType.String && property.name != "m_Name")
@@ -736,7 +736,7 @@ namespace VrcAvatarWorkspace.Branching
                             string dependency = property.stringValue;
                             if (dependency.StartsWith("Assets/", StringComparison.Ordinal) && File.Exists(dependency)
                                 && !Inside(dependency, report.folder) && !Shared(dependency))
-                                problems.Add("設定の文字列に元の素材パスが残っています: " + path + " / " + property.propertyPath + " → " + dependency);
+                                problems.Add(AvatarForkText.OriginalStringPath + path + " / " + property.propertyPath + " → " + dependency);
                         }
                 }
             }
@@ -745,14 +745,14 @@ namespace VrcAvatarWorkspace.Branching
                 var open = typeof(EditorSceneManager).GetMethod("OpenPreviewScene",
                     System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic,
                     null, new[] { typeof(string) }, null);
-                if (open == null) throw new InvalidOperationException("このUnityでは保存SceneのBlueprint IDを非表示で検査できません。複製を停止します。");
+                if (open == null) throw new InvalidOperationException(AvatarForkText.SceneInspection);
                 var scene = (Scene)open.Invoke(null, new object[] { report.scene });
                 try
                 {
                     foreach (var root in scene.GetRootGameObjects())
                         foreach (var component in root.GetComponentsInChildren<Component>(true).Where(IsPipeline))
                             if (!string.IsNullOrEmpty(BlueprintId(new SerializedObject(component)).stringValue))
-                                problems.Add("Sceneのアップロード先のBlueprint IDが残っています: " + report.scene);
+                                problems.Add(AvatarForkText.SceneBlueprintRemains + report.scene);
                 }
                 finally { EditorSceneManager.ClosePreviewScene(scene); }
             }
@@ -764,10 +764,10 @@ namespace VrcAvatarWorkspace.Branching
             RequireAssetsPath(folder);
             var report = JsonUtility.FromJson<BranchReport>(File.ReadAllText(folder + "/" + ReportName, Utf8));
             if (report == null || report.version != 1 || !string.Equals(report.folder, folder, StringComparison.Ordinal))
-                throw new InvalidOperationException("独立複製の記録がこのフォルダーに一致しません。");
+                throw new InvalidOperationException(AvatarForkText.ReportMismatch);
             report.problems = Validate(report).ToArray();
             if (!File.Exists(report.prefab) || !File.Exists(report.scene))
-                report.problems = report.problems.Concat(new[] { "複製したSceneまたはPrefabがありません。" }).ToArray();
+                report.problems = report.problems.Concat(new[] { AvatarForkText.OutputMissing }).ToArray();
             report.status = report.problems.Length == 0 ? "Complete" : "Failed";
             return report;
         }
@@ -779,7 +779,7 @@ namespace VrcAvatarWorkspace.Branching
             try
             {
                 PrefabUtility.InstantiatePrefab(asset, scene);
-                if (!EditorSceneManager.SaveScene(scene, report.scene)) throw new IOException("複製Sceneを保存できませんでした。");
+                if (!EditorSceneManager.SaveScene(scene, report.scene)) throw new IOException(AvatarForkText.SaveCopyScene);
             }
             finally
             {
@@ -791,7 +791,7 @@ namespace VrcAvatarWorkspace.Branching
         static void CheckHashes(Plan plan, ICollection<string> problems)
         {
             foreach (var entry in plan.originalHashes)
-                if (!File.Exists(entry.Key) || Hash(entry.Key) != entry.Value) problems.Add("処理中に元の素材が変更されました: " + entry.Key);
+                if (!File.Exists(entry.Key) || Hash(entry.Key) != entry.Value) problems.Add(AvatarForkText.SourceChanged + entry.Key);
         }
 
         static CopiedAsset PreviousAsset(Plan plan, string path)
@@ -845,17 +845,17 @@ namespace VrcAvatarWorkspace.Branching
         static string ResolveInclude(string owner, string include)
         {
             if (include.StartsWith("Assets/", StringComparison.Ordinal) || include.StartsWith("Packages/", StringComparison.Ordinal))
-                return File.Exists(include) ? Normalize(include) : throw new FileNotFoundException("Shaderのincludeが見つかりません: " + owner, include);
+                return File.Exists(include) ? Normalize(include) : throw new FileNotFoundException(AvatarForkText.IncludeMissing + owner, include);
             string absolute = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(owner) ?? "", include));
             string project = Path.GetFullPath(".").TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             if (File.Exists(absolute))
             {
-                if (!absolute.StartsWith(project, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Project外のShader includeには対応していません: " + include);
+                if (!absolute.StartsWith(project, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException(AvatarForkText.OutsideInclude + include);
                 return Normalize(absolute.Substring(project.Length));
             }
             string builtin = Path.Combine(EditorApplication.applicationContentsPath, "CGIncludes", include);
             if (File.Exists(builtin)) return null;
-            throw new FileNotFoundException("Shaderのincludeを解決できません: " + owner, include);
+            throw new FileNotFoundException(AvatarForkText.IncludeUnresolved + owner, include);
         }
 
         static bool IsText(string path)
@@ -883,13 +883,13 @@ namespace VrcAvatarWorkspace.Branching
         static bool PrefabLink(string name) { return name == "m_PrefabInstance" || name == "m_CorrespondingSourceObject" || name == "m_PrefabAsset"; }
         static bool Inside(string path, string folder) { return path == folder || path.StartsWith(folder + "/", StringComparison.Ordinal); }
         static string Normalize(string path) { return (path ?? "").Replace('\\', '/'); }
-        static string RequireBranchName(string requestedName)
+        internal static string RequireBranchName(string requestedName)
         {
             string name = (requestedName ?? "").Trim();
             if (name.Length == 0 || name.EndsWith(".", StringComparison.Ordinal) || IgnoredName(name)
                 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.IndexOfAny("<>:\"/\\|?*".ToCharArray()) >= 0
                 || name.Any(char.IsControl) || Regex.IsMatch(name, @"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", RegexOptions.IgnoreCase))
-                throw new ArgumentException("複製名に使えない文字や名前があります。");
+                throw new ArgumentException(AvatarForkText.InvalidName);
             return name;
         }
         static bool IgnoredName(string name)
@@ -904,18 +904,18 @@ namespace VrcAvatarWorkspace.Branching
             {
                 if ((current.Exists && (current.Attributes & FileAttributes.ReparsePoint) != 0)
                     || (File.Exists(current.FullName + ".meta") && (File.GetAttributes(current.FullName + ".meta") & FileAttributes.ReparsePoint) != 0))
-                    throw new InvalidOperationException("シンボリックリンクやジャンクションを含む保存先には対応していません: " + path);
+                    throw new InvalidOperationException(AvatarForkText.LinkedDestination + path);
                 if (string.Equals(current.FullName, project, StringComparison.OrdinalIgnoreCase)) break;
             }
         }
         static void RequireAssetsPath(string path)
         {
             if (Normalize(path).Split('/').Skip(1).Any(p => p == ".." || IgnoredName(p)))
-                throw new ArgumentException("Unityが読み込まない名前や相対移動を含む保存先は使えません。");
+                throw new ArgumentException(AvatarForkText.IgnoredDestination);
             string full = Path.GetFullPath(path);
             string assets = Path.GetFullPath("Assets").TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             if (!Normalize(path).StartsWith("Assets/", StringComparison.Ordinal) || !full.StartsWith(assets, StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("保存先はAssets内を指定してください。");
+                throw new ArgumentException(AvatarForkText.OutsideAssets);
         }
         static int MissingScripts(GameObject root) { return root.GetComponentsInChildren<Transform>(true).Sum(t => GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject)); }
         static string Hash(string path) { using (var stream = File.OpenRead(path)) using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", ""); }

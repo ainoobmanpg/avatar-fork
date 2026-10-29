@@ -25,6 +25,7 @@ class EditorCommand
     static bool Reject(Action action) { try { action(); return false; } catch (InvalidOperationException) { return true; } }
     static object Execute()
     {
+        Passed.Clear();
         string work = "Assets/99_検証用/AvatarFork_Rename_" + GUID.Generate().ToString().Substring(0, 8);
         Directory.CreateDirectory(work + "/Source");
         AssetDatabase.Refresh();

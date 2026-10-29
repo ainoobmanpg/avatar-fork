@@ -22,6 +22,7 @@ class EditorCommand
     static void Save(Object asset) { EditorUtility.SetDirty(asset); AssetDatabase.SaveAssetIfDirty(asset); }
     static object Execute()
     {
+        Passed.Clear();
         string work = "Assets/99_検証用/AvatarBrancher_Regression_" + GUID.Generate().ToString().Substring(0, 8);
         Directory.CreateDirectory(work + "/Source");
         AssetDatabase.Refresh();
@@ -129,7 +130,7 @@ class EditorCommand
             var importedMesh = AssetDatabase.LoadAllAssetsAtPath(objPath).OfType<Mesh>().First();
             root.GetComponent<MeshFilter>().sharedMesh = importedMesh;
             importedMesh.vertices = importedMesh.vertices.Select(v => v + Vector3.one).ToArray();EditorUtility.SetDirty(importedMesh);
-            bool dirtyMeshRejected = false;try { AvatarBrancher.Create(root, work + "/Branches", "DirtyImportedMesh"); } catch (InvalidOperationException e) { dirtyMeshRejected = e.Message.Contains("未保存"); }
+            bool dirtyMeshRejected = false;try { AvatarBrancher.Create(root, work + "/Branches", "DirtyImportedMesh"); } catch (InvalidOperationException e) { dirtyMeshRejected = (e.Message.Contains("未保存") || e.Message.Contains("unsaved")); }
             Check(dirtyMeshRejected, "unsaved imported mesh edits are rejected instead of silently lost");
             root.GetComponent<MeshFilter>().sharedMesh = mesh;AssetDatabase.ImportAsset(objPath, ImportAssetOptions.ForceUpdate);
             string modelPath = work + "/Source/Embedded.obj";
@@ -168,11 +169,11 @@ class EditorCommand
             Check(originalColors.SequenceEqual(AssetDatabase.LoadAssetAtPath<GameObject>(Copy(swappedB, Copy(swapped, swappedPath))).GetComponentInChildren<Renderer>().sharedMaterials.Select(m => m.color)) && AvatarBrancher.Verify(swappedB.folder).status == "Complete", "rebranching preserves external model mappings with renamed material assets");
             root.GetComponent<MeshFilter>().sharedMesh = mesh;root.GetComponent<MeshRenderer>().sharedMaterial = child;
             var textureImporter = AssetImporter.GetAtPath(texturePath);EditorUtility.SetDirty(textureImporter);
-            bool dirtyImporterRejected = false;try { AvatarBrancher.Create(root, work + "/Branches", "DirtyImporter"); } catch (InvalidOperationException e) { dirtyImporterRejected = e.Message.Contains("読込設定"); }
+            bool dirtyImporterRejected = false;try { AvatarBrancher.Create(root, work + "/Branches", "DirtyImporter"); } catch (InvalidOperationException e) { dirtyImporterRejected = (e.Message.Contains("読込設定") || e.Message.Contains("import settings")); }
             Check(dirtyImporterRejected, "unapplied importer settings are rejected");EditorUtility.ClearDirty(textureImporter);
             var outside = new GameObject("Outside");UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(outside, scene);
             var constraint = root.AddComponent<ParentConstraint>();constraint.AddSource(new ConstraintSource { sourceTransform = outside.transform, weight = 1 });
-            bool rejected = false;try { AvatarBrancher.Create(root, work + "/Branches", "Invalid"); } catch (InvalidOperationException e) { rejected = e.Message.Contains("アバター外"); }
+            bool rejected = false;try { AvatarBrancher.Create(root, work + "/Branches", "Invalid"); } catch (InvalidOperationException e) { rejected = (e.Message.Contains("アバター外") || e.Message.Contains("outside the avatar")); }
             Check(rejected && !Directory.Exists(work + "/Branches/Invalid"), "external Scene reference is rejected before copying");
             var result = new { success = true, checks = Passed.ToArray(), work };
             string reportPath = Environment.GetEnvironmentVariable("AVATAR_FORK_TEST_REPORT");

@@ -61,12 +61,12 @@ namespace VrcAvatarWorkspace.Branching
                     BranchRenamePreview interrupted;
                     try { interrupted = JsonUtility.FromJson<BranchRenamePreview>(File.ReadAllText(operation, Utf8)); }
                     catch (Exception error) when (error is ArgumentException || error is IOException)
-                    { throw new InvalidOperationException("判別できない中断記録があります。Libraryを削除せず、復元用データを保全してください: " + operation, error); }
+                    { throw new InvalidOperationException(AvatarForkText.CorruptRecovery + operation, error); }
                     if (interrupted == null || string.IsNullOrEmpty(interrupted.folder) || string.IsNullOrEmpty(interrupted.destination))
-                        throw new InvalidOperationException("判別できない中断記録があります。Libraryを削除せず、復元用データを保全してください: " + operation);
+                        throw new InvalidOperationException(AvatarForkText.CorruptRecovery + operation);
                     if (interrupted != null && (string.Equals(folder, interrupted.folder, StringComparison.OrdinalIgnoreCase)
                         || string.Equals(folder, interrupted.destination, StringComparison.OrdinalIgnoreCase)))
-                        throw new InvalidOperationException("途中で止まった改名の記録があります。Libraryを削除せず、復元手順を確認してください: " + recordFolder);
+                        throw new InvalidOperationException(AvatarForkText.InterruptedRename + recordFolder);
                 }
             var pending = new Stack<string>();
             pending.Push(folder);
@@ -75,25 +75,25 @@ namespace VrcAvatarWorkspace.Branching
                 {
                     var attributes = File.GetAttributes(path);
                     if ((attributes & FileAttributes.ReparsePoint) != 0)
-                        throw new InvalidOperationException("複製内にシンボリックリンクやジャンクションがあります。リンク先のファイルを変更しないため、改名を停止します: " + path);
+                        throw new InvalidOperationException(AvatarForkText.LinkedCopy + path);
                     if ((attributes & FileAttributes.Directory) != 0) pending.Push(path);
                 }
             if (!File.Exists(folder + "/" + ReportName))
-                throw new InvalidOperationException("Avatar Forkで作った複製のフォルダーを選んでください。");
+                throw new InvalidOperationException(AvatarForkText.SelectCopy);
             var report = JsonUtility.FromJson<BranchReport>(File.ReadAllText(folder + "/" + ReportName, Utf8));
             if (report == null || report.version != 1 || report.status != "Complete" || report.folder != folder
                 || string.IsNullOrEmpty(report.branchName) || report.branchName != Path.GetFileName(folder))
-                throw new InvalidOperationException("完了した複製の命名記録が必要です。旧形式の場合は、独立複製で新しいコピーを作ってください。");
+                throw new InvalidOperationException(AvatarForkText.NamingRecord);
             if (Directory.GetFiles(folder, ReportName, SearchOption.AllDirectories).Length != 1)
-                throw new InvalidOperationException("対象内に別の独立複製があります。別々のフォルダーへ分けてから実行してください。");
+                throw new InvalidOperationException(AvatarForkText.ContainsCopy);
             if (FindBranchFolder(folder) != null)
-                throw new InvalidOperationException("別の独立複製の中にあるフォルダーは改名できません。");
+                throw new InvalidOperationException(AvatarForkText.RenameNested);
             string name = RequireBranchName(requestedName);
             string parent = Normalize(Path.GetDirectoryName(folder));
             string destination = parent + "/" + name;
             if (!string.Equals(folder, destination, StringComparison.OrdinalIgnoreCase)
                 && (Directory.Exists(destination) || File.Exists(destination) || File.Exists(destination + ".meta") || !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(destination))))
-                throw new InvalidOperationException("同じ名前の保存先があります。別の名前を指定してください。");
+                throw new InvalidOperationException(AvatarForkText.RenameCollision);
             name = Path.GetFileName(destination);
             var paths = Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Select(Normalize)
                 .Where(p => !p.EndsWith(".meta", StringComparison.Ordinal))
@@ -113,10 +113,10 @@ namespace VrcAvatarWorkspace.Branching
             var tracked = report.assets.Select(a => a.destination).Concat(report.extractedMaterials.Select(a => a.destination))
                 .Concat(new[] { report.prefab, report.scene }).ToArray();
             if (tracked.Distinct(StringComparer.OrdinalIgnoreCase).Count() != tracked.Length)
-                throw new InvalidOperationException("複製の記録に重複があります。");
+                throw new InvalidOperationException(AvatarForkText.DuplicateRecord);
             foreach (string path in tracked)
                 if (!Inside(path, folder) || !paths.ContainsKey(path) || !File.Exists(path + ".meta"))
-                    throw new InvalidOperationException("記録にある素材が見つかりません。移動や削除を確認してください: " + path);
+                    throw new InvalidOperationException(AvatarForkText.RecordedAssetMissing + path);
             foreach (string path in report.assets.Select(a => a.destination).Concat(report.extractedMaterials.Select(a => a.destination)))
             {
                 string stem = Path.GetFileNameWithoutExtension(path);
@@ -128,13 +128,13 @@ namespace VrcAvatarWorkspace.Branching
             paths[report.prefab] = destination + "/" + name + ".prefab";
             paths[report.scene] = destination + "/" + name + ".unity";
             if (paths.Values.Distinct(StringComparer.OrdinalIgnoreCase).Count() != paths.Count)
-                throw new InvalidOperationException("改名先でファイル名が重複します。後から追加した素材の名前を確認してください。");
+                throw new InvalidOperationException(AvatarForkText.RenameFileCollision);
             var guids = paths.Keys.Concat(Directory.GetDirectories(folder, "*", SearchOption.AllDirectories).Select(Normalize)).Concat(new[] { folder })
                 .ToDictionary(p => p, AssetDatabase.AssetPathToGUID, StringComparer.Ordinal);
             foreach (var entry in report.assets)
-                if (guids[entry.destination] != entry.destinationGuid) throw new InvalidOperationException("素材のGUIDが記録と異なります: " + entry.destination);
+                if (guids[entry.destination] != entry.destinationGuid) throw new InvalidOperationException(AvatarForkText.AssetGuidMismatch + entry.destination);
             foreach (var entry in report.extractedMaterials)
-                if (guids[entry.destination] != entry.destinationGuid) throw new InvalidOperationException("材質のGUIDが記録と異なります: " + entry.destination);
+                if (guids[entry.destination] != entry.destinationGuid) throw new InvalidOperationException(AvatarForkText.MaterialGuidMismatch + entry.destination);
             var preview = new BranchRenamePreview {
                 previousName = report.branchName, name = name, folder = folder, destination = destination,
                 changes = paths.Where(p => p.Key != p.Value).Select(p => p.Key + " → " + p.Value).ToArray(),
@@ -154,22 +154,22 @@ namespace VrcAvatarWorkspace.Branching
         static void CheckRenameState(string folder)
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling)
-                throw new InvalidOperationException("Play Modeとコンパイルが終わってから実行してください。");
+                throw new InvalidOperationException(AvatarForkText.Busy);
             if (UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage() != null)
-                throw new InvalidOperationException("Prefab Modeを閉じてから実行してください。");
+                throw new InvalidOperationException(AvatarForkText.ClosePrefabMode);
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {
                 var scene = SceneManager.GetSceneAt(i);
                 if (string.IsNullOrEmpty(scene.path))
-                    throw new InvalidOperationException("名前の付いていないSceneがあります。先にSceneへ名前を付けて保存してから改名してください。");
+                    throw new InvalidOperationException(AvatarForkText.RenameUnnamedScene);
                 if (scene.isDirty && (Inside(scene.path, folder) || scene.GetRootGameObjects()
                     .SelectMany(g => EditorUtility.CollectDependencies(new Object[] { g }))
                     .Any(o => o != null && Inside(AssetDatabase.GetAssetPath(o), folder))))
-                    throw new InvalidOperationException("対象の素材を使うSceneに未保存変更があります。保存するかどうかを決めてから実行してください。");
+                    throw new InvalidOperationException(AvatarForkText.DirtyScene);
             }
             foreach (var asset in Resources.FindObjectsOfTypeAll<Object>())
                 if (asset != null && !(asset is Shader) && EditorUtility.IsDirty(asset) && Inside(AssetDatabase.GetAssetPath(asset), folder))
-                    throw new InvalidOperationException("対象の素材に未保存変更があります。保存するかどうかを決めてから実行してください: " + AssetDatabase.GetAssetPath(asset));
+                    throw new InvalidOperationException(AvatarForkText.DirtyAsset + AssetDatabase.GetAssetPath(asset));
         }
 
         public static BranchReport Rename(string folder, string requestedName)
@@ -204,8 +204,8 @@ namespace VrcAvatarWorkspace.Branching
                     if (openScenes.Length == SceneManager.sceneCount)
                         temporaryScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
                     foreach (var scene in openScenes)
-                        if (!EditorSceneManager.CloseScene(scene, true)) throw new IOException("対象Sceneを閉じられませんでした。変更は行いません。");
-                    EditorUtility.DisplayProgressBar("複製の名前を一式変更", "素材の名前と参照を更新しています", .2f);
+                        if (!EditorSceneManager.CloseScene(scene, true)) throw new IOException(AvatarForkText.CloseSceneFailed);
+                    EditorUtility.DisplayProgressBar(AvatarForkText.RenameTitle, AvatarForkText.RenameProgress, .2f);
                     var staged = new Dictionary<string, string>();
                     AssetDatabase.StartAssetEditing();
                     try
@@ -251,7 +251,7 @@ namespace VrcAvatarWorkspace.Branching
                     foreach (var entry in plan.guids)
                     {
                         string path = plan.paths.TryGetValue(entry.Key, out var target) ? target : plan.preview.destination + entry.Key.Substring(plan.preview.folder.Length);
-                        if (AssetDatabase.AssetPathToGUID(path) != entry.Value) problems.Add("GUIDが変わりました: " + path);
+                        if (AssetDatabase.AssetPathToGUID(path) != entry.Value) problems.Add(AvatarForkText.GuidChanged + path);
                     }
                     if (problems.Count > 0) throw new InvalidOperationException(string.Join("\n", problems.Take(12)));
                 }
@@ -283,12 +283,12 @@ namespace VrcAvatarWorkspace.Branching
                         .Select(p => p.Substring((backup + "/files").Length)).OrderBy(p => p, StringComparer.Ordinal).ToArray();
                     var restoredFiles = Directory.GetFiles(plan.preview.folder, "*", SearchOption.AllDirectories).Select(Normalize)
                         .Select(p => p.Substring(plan.preview.folder.Length)).OrderBy(p => p, StringComparer.Ordinal).ToArray();
-                    if (!expectedFiles.SequenceEqual(restoredFiles)) throw new IOException("復元したファイルの一覧がバックアップと一致しません。");
+                    if (!expectedFiles.SequenceEqual(restoredFiles)) throw new IOException(AvatarForkText.RestoreFilesMismatch);
                     foreach (string path in Directory.GetFiles(backup + "/files", "*", SearchOption.AllDirectories).Select(Normalize).Concat(new[] { backup + "/files.meta" }))
                     {
                         string target = plan.preview.folder + path.Substring((backup + "/files").Length);
                         if (!File.Exists(target) || Hash(path) != Hash(target))
-                            throw new IOException("復元したファイルがバックアップと一致しません: " + target);
+                            throw new IOException(AvatarForkText.RestoreContentMismatch + target);
                     }
                     ReopenRenamedScenes(setup, plan, false);
                     if (temporaryScene.IsValid() && temporaryScene.isLoaded && SceneManager.sceneCount > 1)
@@ -297,13 +297,13 @@ namespace VrcAvatarWorkspace.Branching
                 }
                 catch (Exception restoreError)
                 {
-                    throw new IOException("名前の変更と自動復元に失敗しました。復元用データ: " + backup + "\n" + error.Message + "\n" + restoreError.Message, error);
+                    throw new IOException(AvatarForkText.RestoreFailed + backup + "\n" + error.Message + "\n" + restoreError.Message, error);
                 }
-                throw new InvalidOperationException("名前の変更に失敗したため元へ戻しました。" + error.Message, error);
+                throw new InvalidOperationException(AvatarForkText.RenameRestored + error.Message, error);
             }
             finally { EditorUtility.ClearProgressBar(); }
             try { ReopenRenamedScenes(setup, plan, true); }
-            catch (Exception error) { Debug.LogWarning("改名は完了しました。Sceneを開き直せませんでした: " + plan.report.scene + "\n" + error.Message); }
+            catch (Exception error) { Debug.LogWarning(AvatarForkText.ReopenFailed + plan.report.scene + "\n" + error.Message); }
             finally
             {
                 if (temporaryScene.IsValid() && temporaryScene.isLoaded && SceneManager.sceneCount > 1)
@@ -332,7 +332,7 @@ namespace VrcAvatarWorkspace.Branching
                 {
                     string prefix = "VrcAvatarBranch/" + plan.preview.previousName + "/";
                     if (!match.Groups[1].Value.StartsWith(prefix, StringComparison.Ordinal))
-                        throw new InvalidOperationException("記録に一致しないShader名があります: " + asset.destination);
+                        throw new InvalidOperationException(AvatarForkText.ShaderMismatch + asset.destination);
                     shaders[match.Groups[1].Value] = "VrcAvatarBranch/" + plan.preview.name + "/" + match.Groups[1].Value.Substring(prefix.Length);
                 }
             }
@@ -416,11 +416,11 @@ namespace VrcAvatarWorkspace.Branching
                 if (scenePath == plan.paths[plan.report.scene])
                 {
                     var roots = scene.GetRootGameObjects().Where(g => PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(g) == prefab).ToArray();
-                    if (roots.Length != 1) throw new InvalidOperationException("保存Sceneのアバターを一意に確認できません。");
+                    if (roots.Length != 1) throw new InvalidOperationException(AvatarForkText.AmbiguousAvatar);
                     if (roots[0].name == plan.preview.previousName) { roots[0].name = plan.preview.name; modified = true; }
                 }
                 foreach (var sceneRoot in scene.GetRootGameObjects()) modified |= RewriteRenameProperties(sceneRoot.GetComponentsInChildren<Component>(true), plan.references);
-                if (modified && !EditorSceneManager.SaveScene(scene)) throw new IOException("変更したSceneを保存できません。");
+                if (modified && !EditorSceneManager.SaveScene(scene)) throw new IOException(AvatarForkText.SaveRenamedScene);
             }
             finally
             {

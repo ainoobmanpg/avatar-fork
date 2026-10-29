@@ -15,8 +15,10 @@ namespace VrcAvatarWorkspace.Branching
         GameObject[] candidates = Array.Empty<GameObject>();
         string branchName;
         string parent = AvatarBrancher.DefaultParent;
-        BranchReport result;
+        [NonSerialized] BranchReport result;
         string error;
+        string rejectedSelection;
+        bool showDetails;
         Vector2 scroll;
 
         static AvatarBranchWindow()
@@ -28,16 +30,16 @@ namespace VrcAvatarWorkspace.Branching
         static void AddAvatarMenu(GenericMenu menu, GameObject selected)
         {
             var root = AvatarBrancher.AvatarRoot(selected);
-            if (root != null) menu.AddItem(new GUIContent("アバターを独立して複製…"), false, () => Open(root));
+            if (root != null) menu.AddItem(new GUIContent(AvatarForkText.CopyMenu), false, () => Open(root));
         }
 
         static void AddSceneMenu(GenericMenu menu, Scene scene)
         {
             if (scene.IsValid() && scene.isLoaded && !EditorSceneManager.IsPreviewScene(scene))
-                menu.AddItem(new GUIContent("アバターを独立して複製…"), false, () => OpenScene(scene));
+                menu.AddItem(new GUIContent(AvatarForkText.CopyMenu), false, () => OpenScene(scene));
         }
 
-        [MenuItem("Tools/アバターを独立して複製…")]
+        [MenuItem("Tools/Avatar Fork")]
         static void OpenSelected()
         {
             var root = AvatarBrancher.AvatarRoot(Selection.activeGameObject);
@@ -46,15 +48,62 @@ namespace VrcAvatarWorkspace.Branching
 
         public static AvatarBranchWindow Open(GameObject root)
         {
-            var window = GetWindow<AvatarBranchWindow>("アバターの独立複製");
-            window.minSize = new Vector2(530, 410);
-            window.source = root;
-            window.candidates = new[] { root };
-            window.branchName = root.name + "_分岐";
-            window.result = null;
-            window.error = null;
+            var window = GetWindow<AvatarBranchWindow>(AvatarForkText.CopyTitle);
+            window.minSize = new Vector2(530, 510);
+            window.SetParent(AvatarBrancher.DefaultParent);
+            window.candidates = root == null ? Array.Empty<GameObject>() : new[] { root };
+            window.SetSource(root);
             window.Show();
             return window;
+        }
+
+        void SetSource(GameObject value)
+        {
+            source = value;
+            branchName = value == null ? "" : value.name + "_Copy";
+            ClearCompletion();
+        }
+
+        void ClearCompletion() { result = null; error = null; }
+
+        void SetName(string value)
+        {
+            if (branchName == value) return;
+            branchName = value;
+            ClearCompletion();
+        }
+
+        void SetParent(string value)
+        {
+            rejectedSelection = null;
+            if (parent == value) return;
+            parent = value;
+            ClearCompletion();
+        }
+
+        static string ParentFromSelection(string chosen)
+        {
+            string full = Path.GetFullPath(chosen).Replace('\\', '/').TrimEnd('/');
+            string assets = Path.GetFullPath(Application.dataPath).Replace('\\', '/').TrimEnd('/');
+            string candidate;
+            if (string.Equals(full, assets, StringComparison.OrdinalIgnoreCase)) candidate = "Assets";
+            else if (full.StartsWith(assets + "/", StringComparison.OrdinalIgnoreCase)) candidate = "Assets" + full.Substring(assets.Length);
+            else throw new ArgumentException(AvatarForkText.OutsideAssets);
+            AvatarBrancher.ResolveDestination(candidate, "AvatarForkDestination");
+            return candidate;
+        }
+
+        void AcceptParentSelection(string chosen)
+        {
+            if (string.IsNullOrEmpty(chosen)) return;
+            try { SetParent(ParentFromSelection(chosen)); }
+            catch (Exception exception) when (IsDestinationError(exception)) { rejectedSelection = chosen; }
+        }
+
+        static bool IsDestinationError(Exception exception)
+        {
+            return exception is ArgumentException || exception is InvalidOperationException || exception is IOException
+                || exception is NotSupportedException || exception is UnauthorizedAccessException;
         }
 
         static void OpenScene(Scene scene)
@@ -62,88 +111,109 @@ namespace VrcAvatarWorkspace.Branching
             var avatars = scene.GetRootGameObjects().SelectMany(g => g.GetComponentsInChildren<Transform>(true))
                 .Select(t => t.gameObject).Where(g => g.GetComponents<Component>().Any(c => c != null && c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).ToArray();
             var selected = AvatarBrancher.AvatarRoot(Selection.activeGameObject);
-            var window = selected != null && selected.scene == scene ? Open(selected) : avatars.Length > 0 ? Open(avatars[0]) : GetWindow<AvatarBranchWindow>("アバターの独立複製");
+            var window = Open(selected != null && selected.scene == scene ? selected : avatars.FirstOrDefault());
             window.candidates = avatars;
-            if (avatars.Length == 0)
-            {
-                window.source = null;
-                window.result = null;
-                window.error = "このSceneにVRChatアバターが見つかりません。Hierarchyで複製したいオブジェクトを右クリックしてください。";
-            }
         }
 
         void OnGUI()
         {
+            titleContent = new GUIContent(AvatarForkText.CopyTitle);
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            EditorGUILayout.LabelField("現在の改変から、独立した作業用コピーを作ります", EditorStyles.boldLabel);
+            AvatarForkText.LanguageSelector();
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(AvatarForkText.CopyTitle, EditorStyles.boldLabel);
             EditorGUILayout.Space();
             if (candidates.Length > 1)
             {
                 int old = Math.Max(0, Array.IndexOf(candidates, source));
-                int chosen = EditorGUILayout.Popup("複製するアバター", old, candidates.Select(g => g == null ? "削除済み" : g.name).ToArray());
-                if (chosen != old) { source = candidates[chosen]; branchName = source.name + "_分岐"; result = null; }
+                int chosen = EditorGUILayout.Popup(AvatarForkText.Candidates, old, candidates.Select(g => g == null ? AvatarForkText.Deleted : g.name).ToArray());
+                if (chosen != old) SetSource(candidates[chosen]);
             }
-            var newSource = (GameObject)EditorGUILayout.ObjectField("複製元", source, typeof(GameObject), true);
-            if (newSource != source) { source = AvatarBrancher.AvatarRoot(newSource); result = null; }
-            branchName = EditorGUILayout.TextField("複製名", branchName ?? "");
-            EditorGUILayout.BeginHorizontal();
-            parent = EditorGUILayout.TextField("保存するフォルダー", parent);
-            if (GUILayout.Button("選ぶ", GUILayout.Width(52)))
-            {
-                string chosen = EditorUtility.OpenFolderPanel("Assets内の保存先を選択", Application.dataPath, "");
-                if (!string.IsNullOrEmpty(chosen))
-                {
-                    string project = Path.GetFullPath(".").Replace('\\', '/') + "/";
-                    if (chosen.StartsWith(project + "Assets/", StringComparison.OrdinalIgnoreCase)) parent = chosen.Substring(project.Length);
-                    else if (chosen == project + "Assets") parent = "Assets/07_改変用/独立複製";
-                    else error = "Assets内のフォルダーを選んでください。";
-                }
-            }
-            EditorGUILayout.EndHorizontal();
-            bool validDestination = false;
+            var newSource = (GameObject)EditorGUILayout.ObjectField(AvatarForkText.Source, source, typeof(GameObject), true);
+            if (newSource != source) SetSource(AvatarBrancher.AvatarRoot(newSource));
+            if (source == null) EditorGUILayout.HelpBox(AvatarForkText.SourceMissing, MessageType.Warning);
+            SetName(EditorGUILayout.TextField(AvatarForkText.CopyName, branchName ?? ""));
+            bool validName = false;
             try
             {
-                var preview = AvatarBrancher.ResolveDestination(parent, branchName);
-                EditorGUILayout.LabelField("次に作成する名前", preview.name);
-                EditorGUILayout.LabelField("Scene / Prefab", preview.name + ".unity / " + preview.name + ".prefab", EditorStyles.wordWrappedLabel);
-                EditorGUILayout.LabelField("素材名の例", "Materials/Purple__" + preview.name + ".mat", EditorStyles.wordWrappedLabel);
-                EditorGUILayout.LabelField("保存先", preview.folder, EditorStyles.wordWrappedLabel);
-                validDestination = true;
+                if (string.IsNullOrWhiteSpace(branchName)) throw new ArgumentException(AvatarForkText.EmptyName);
+                AvatarBrancher.RequireBranchName(branchName);
+                validName = true;
             }
-            catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException
-                || exception is IOException || exception is NotSupportedException || exception is UnauthorizedAccessException)
-            { EditorGUILayout.HelpBox(exception.Message, MessageType.Warning); }
-            EditorGUILayout.HelpBox("同名がある場合は末尾に番号を付け、Hierarchy・Scene・Prefab・素材へ同じ名前を使います。骨・子オブジェクト・アニメーションの制御名は維持します。", MessageType.None);
-            EditorGUILayout.HelpBox("マテリアルの親子関係、画像、メッシュ、アニメーション、メニュー、設定、独自Shaderを一式コピーします。元のSceneと素材は保存し直しません。", MessageType.Info);
-            EditorGUILayout.HelpBox("複製先のBlueprint IDは空にします。アップロード先を引き継がず、新規アバターとして扱われる状態で保存します。MAやギミックの構成・設定は引き継ぎます。", MessageType.Info);
-            EditorGUILayout.HelpBox("Unity標準素材、Packages内のSDK・MA・lilToon等、スクリプト・DLLは共通です。それ以外に元の素材への参照が残った場合は、失敗として知らせます。", MessageType.None);
-            using (new EditorGUI.DisabledScope(source == null || !validDestination || EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling))
-                if (GUILayout.Button("一式を複製して、独立しているか検査する", GUILayout.Height(34))) CreateBranch();
+            catch (ArgumentException exception) { EditorGUILayout.HelpBox(exception.Message, MessageType.Warning); }
 
-            if (!string.IsNullOrEmpty(error)) EditorGUILayout.HelpBox(error, MessageType.Error);
+            EditorGUILayout.Space();
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PrefixLabel(AvatarForkText.SaveIn);
+            EditorGUILayout.SelectableLabel(parent, EditorStyles.wordWrappedLabel, GUILayout.MinHeight(32));
+            if (GUILayout.Button(AvatarForkText.Change, GUILayout.Width(82)))
+            {
+                string start = Directory.Exists(parent) ? Path.GetFullPath(parent) : Application.dataPath;
+                AcceptParentSelection(EditorUtility.OpenFolderPanel(AvatarForkText.ChooseParent, start, ""));
+            }
+            if (parent != AvatarBrancher.DefaultParent && GUILayout.Button(AvatarForkText.UseAssets, GUILayout.Width(108))) SetParent(AvatarBrancher.DefaultParent);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.LabelField(AvatarForkText.ParentHelp, EditorStyles.wordWrappedLabel);
+            if (!string.IsNullOrEmpty(rejectedSelection))
+            {
+                string reason = "";
+                try { ParentFromSelection(rejectedSelection); }
+                catch (Exception exception) when (IsDestinationError(exception)) { reason = "\n" + exception.Message; }
+                EditorGUILayout.HelpBox(AvatarForkText.Format(AvatarForkText.RejectedParent, parent) + reason, MessageType.Warning);
+            }
+
+            BranchDestination destination = null;
+            if (result != null)
+                destination = new BranchDestination { name = result.branchName, folder = result.folder, scene = result.scene, prefab = result.prefab };
+            else if (validName)
+            {
+                try { destination = AvatarBrancher.ResolveDestination(parent, branchName); }
+                catch (Exception exception) when (IsDestinationError(exception)) { EditorGUILayout.HelpBox(exception.Message, MessageType.Warning); }
+            }
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(AvatarForkText.Destination, EditorStyles.boldLabel);
+            EditorGUILayout.SelectableLabel(destination?.folder ?? "—", EditorStyles.wordWrappedLabel, GUILayout.MinHeight(36));
+            EditorGUILayout.LabelField(AvatarForkText.Outputs, EditorStyles.wordWrappedLabel);
+            if (result == null && destination != null)
+            {
+                if (destination.name != branchName.Trim()) EditorGUILayout.HelpBox(AvatarForkText.Format(AvatarForkText.Collision, destination.name), MessageType.Info);
+                if (Path.GetFileName(parent) == branchName.Trim()) EditorGUILayout.HelpBox(AvatarForkText.Format(AvatarForkText.DoubleFolder, destination.name), MessageType.Info);
+            }
+            EditorGUILayout.Space();
+            EditorGUILayout.HelpBox(AvatarForkText.OriginalNote, MessageType.Info);
+            EditorGUILayout.HelpBox(AvatarForkText.BlueprintNote, MessageType.Info);
+            EditorGUILayout.HelpBox(AvatarForkText.SharedNote, MessageType.None);
+            showDetails = EditorGUILayout.Foldout(showDetails, AvatarForkText.Details, true);
+            if (showDetails)
+            {
+                EditorGUILayout.LabelField(AvatarForkText.DetailsAssets, EditorStyles.wordWrappedLabel);
+                EditorGUILayout.LabelField(AvatarForkText.DetailsNames, EditorStyles.wordWrappedLabel);
+                EditorGUILayout.LabelField(AvatarForkText.DetailsCheck, EditorStyles.wordWrappedLabel);
+            }
+            EditorGUILayout.Space();
+            if (result == null)
+                using (new EditorGUI.DisabledScope(source == null || destination == null || EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling))
+                    if (GUILayout.Button(AvatarForkText.Create, GUILayout.Height(34))) CreateBranch();
+            if (!string.IsNullOrEmpty(error)) EditorGUILayout.HelpBox(AvatarForkText.CopyFailed + "\n" + error, MessageType.Error);
             if (result != null)
             {
                 EditorGUILayout.Space();
-                EditorGUILayout.HelpBox("複製と参照検査が完了しました。コピーした素材: " + (result.assets.Length + result.extractedMaterials.Length) + "ファイル", MessageType.Info);
-                EditorGUILayout.LabelField("作成済み", result.branchName ?? Path.GetFileName(result.folder));
-                EditorGUILayout.LabelField("Blueprint IDは空です。複製元の公開アバターへ上書きするIDを持っていません。", EditorStyles.wordWrappedLabel);
+                EditorGUILayout.HelpBox(AvatarForkText.Format(AvatarForkText.Complete, result.assets.Length + result.extractedMaterials.Length), MessageType.Info);
+                EditorGUILayout.LabelField(AvatarForkText.ResultBlueprint, EditorStyles.wordWrappedLabel);
                 if (result.missingSourceReferences.Length > 0)
-                    EditorGUILayout.HelpBox("元から参照先が存在しないデータが " + result.missingSourceReferences.Length + "件ありました。コピー側では参照を空にして、後から元へ再接続されないようにしています。詳細は保存先のBranchReport.jsonに記録しました。", MessageType.Warning);
-                EditorGUILayout.SelectableLabel(result.folder, EditorStyles.wordWrappedLabel, GUILayout.Height(38));
-                EditorGUILayout.LabelField("作成後のSceneとPrefabは同じフォルダーにあります。", EditorStyles.wordWrappedLabel);
-                if (GUILayout.Button("作成したSceneを開く")) OpenResult();
-                if (GUILayout.Button("保存先をProjectで表示")) EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<DefaultAsset>(result.folder));
-                if (GUILayout.Button("共有するプログラム・標準素材の一覧")) SharedWindow.Open(result.shared);
+                    EditorGUILayout.HelpBox(AvatarForkText.Format(AvatarForkText.MissingReferences, result.missingSourceReferences.Length), MessageType.Warning);
+                if (GUILayout.Button(AvatarForkText.OpenScene)) OpenResult();
+                if (GUILayout.Button(AvatarForkText.ShowProject)) EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<DefaultAsset>(result.folder));
+                if (GUILayout.Button(AvatarForkText.SharedItems)) SharedWindow.Open(result.shared);
             }
             EditorGUILayout.EndScrollView();
         }
 
         void CreateBranch()
         {
-            error = null;
-            result = null;
+            ClearCompletion();
             try { result = AvatarBrancher.Create(source, parent, branchName); }
-            catch (Exception exception) { error = "複製は完了していません。\n" + exception.Message; Debug.LogError("[AvatarBrancher] " + error); }
+            catch (Exception exception) { error = exception.Message; Debug.LogError("[Avatar Fork] " + AvatarForkText.CopyFailed + "\n" + error); }
             Repaint();
         }
 
@@ -163,14 +233,16 @@ namespace VrcAvatarWorkspace.Branching
         Vector2 scroll;
         public static void Open(string[] paths)
         {
-            var window = GetWindow<SharedWindow>("共有するプログラムと標準素材");
+            var window = GetWindow<SharedWindow>(AvatarForkText.SharedTitle);
             window.paths = paths;
             window.Show();
         }
         void OnGUI()
         {
+            titleContent = new GUIContent(AvatarForkText.SharedTitle);
+            AvatarForkText.LanguageSelector();
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            EditorGUILayout.HelpBox("この一覧のプログラムやパッケージ自体を更新した場合は、同じUnity Project内のアバターに影響します。", MessageType.Info);
+            EditorGUILayout.HelpBox(AvatarForkText.SharedHelp, MessageType.Info);
             foreach (var path in paths) EditorGUILayout.LabelField(path, EditorStyles.wordWrappedLabel);
             EditorGUILayout.EndScrollView();
         }
