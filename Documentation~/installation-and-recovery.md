@@ -1,43 +1,12 @@
-# 導入・更新・削除と、処理中断からの復元
+# 困ったときの対処と復元
 
-## 導入する前に
+[基本の使い方](../README.md#使い方) · [更新・削除と導入方式の切り替え](updating-and-removing.md)
 
-ベータ版のため、まず制作プロジェクト全体を別の場所へバックアップする。`Assets`、`Packages`、`ProjectSettings`に加え、改名を途中で中断した場合は`Library/AvatarFork/Rename`も保全する。バックアップと制作中のプロジェクトを同じフォルダーに重ねない。
+- 複製が失敗した場合は、[失敗した出力とエラーを確認](#複製が失敗した場合)してください。
+- 名前変更の途中でUnityが強制終了した場合は、[中断時の復元手順](#改名の途中でunityが終了した場合)を確認し、復元するまで再実行しないでください。
+- 解決しない場合は、[問題を報告する](#問題を報告する)の内容を添えてください。
 
-Unity 2022.3向け。確認環境はWindows・Unity 2022.3.22f1。VRCアバターを扱う場合は、VRChat Creator CompanionでAvatarsプロジェクトを用意する。SDKや購入素材をこのツールが導入することはない。
-
-ALCOM / VCCでは[READMEのVPMリポジトリURL](../README.md#alcom--vccから導入する推奨)を登録し、対象のプロジェクトへAvatar Forkを追加する。プレリリース版の表示を有効にする。Unityを閉じてからパッケージを変更する。
-
-unitypackage方式はReleasesの`AvatarFork-<版>.unitypackage`を取得し、Unityの`Assets > Import Package > Custom Package…`で読み込む。配置先は`Assets/AvatarFork`。SDKや購入アバターは同梱しない。
-
-**二つの方式は併用しない。** unitypackage版からALCOM / VCCへ切り替える場合は、バックアップ後、`Assets/AvatarFork`がツール本体だけであることを確認し、このフォルダーをプロジェクト外へ保全して取り除いてからパッケージを追加する。アバターや自作素材をこのフォルダーへ入れない。逆方向では、ALCOM / VCCでAvatar Forkを削除してからunitypackageを読み込む。旧`Assets/Editor/AvatarBranching`も同時に置かない。生成したコピーは削除しない。自動で旧フォルダーを削除する仕組みは使っていない。
-
-開発用にcloneした外部フォルダーを使う場合は、Package Managerで「Add package from disk…」から`package.json`を指定する。Unityが参照している間は外部フォルダーを移動・削除しない。PowerShell 7で確認している。Windowsでは対象のUnityを閉じ、`./scripts~/install.ps1 -Project "Unityプロジェクトのパス"`でも登録できる。変更前の`Packages/manifest.json`は表示された`backup`へ保存される。
-
-## ALCOM / VCC版の更新・削除
-
-Unityを閉じてプロジェクトをバックアップし、ALCOM / VCCのパッケージ管理で更新または削除する。更新後はUnityのコンパイルエラーがなく、試験用コピーで複製・改名ができることを確かめる。削除しても生成したScene・Prefab・素材・`BranchReport.json`は残す。SDK・MA・Shader等の共有プログラムは引き続き必要になる。
-
-## unitypackage版の更新・削除
-
-更新時はプロジェクトをバックアップし、既存の`Assets/AvatarFork`がツール本体だけであることを確認してプロジェクト外へ保全し、古いツールフォルダーを取り除いてから新しいunitypackageを読み込む。旧ファイルの残留を避けるため、上書きだけで更新しない。削除時も同じツールフォルダーだけを取り除き、生成データは残す。版を戻しても生成データが更新前へ戻ることはないため、必要ならプロジェクトのバックアップを使う。
-
-## 開発用の外部フォルダー参照を更新する
-
-1. プロジェクトをバックアップし、使用中の版を`package.json`で記録する。Unityを閉じる。
-2. cloneした場合は、確認したリリースのtagへ切り替える。ZIPの場合は新しい版を別のフォルダーに展開し、古い版を残す。
-3. 同じclone先を使う場合はUnityを開き直す。ZIPの展開先を変えた場合はPackage Managerで新しい`package.json`を選び直す。導入スクリプトで登録先を変更してもよい。
-4. Consoleにコンパイルエラーがなく、Hierarchyの右クリックから操作を開けることを確認する。まず試験用のコピーで複製・改名と見た目を確かめる。
-
-以前の版へ戻す場合も、Unityを閉じて、保全した以前のパッケージを参照し直す。パッケージを戻しても、生成済みのSceneや素材は更新前へ自動復元されない。生成データを戻す必要があればプロジェクトのバックアップを使う。
-
-## 削除する
-
-Package ManagerでAvatar Forkを選び「Remove」を押す。削除後、Hierarchyの操作が消え、Consoleにエラーがないことを確認する。外部パッケージフォルダーは、ほかのプロジェクトが参照していないことを確認してから取り除く。
-
-生成済みのScene・Prefab・素材と`BranchReport.json`は制作プロジェクト内に残る。Avatar ForkはEditor用なので、生成したアバターを使うためにツールを残す必要はない。SDK・MA・Shader等の共有プログラムは、それぞれ引き続き必要になる。生成データや復元用の`Library/AvatarFork`を削除する操作とは区別する。
-
-導入スクリプトでmanifestを戻す場合はUnityを閉じ、現在のmanifestを別途保全してから、表示された`backup`を`Packages/manifest.json`へ戻す。バックアップ後に追加した別パッケージの登録も戻るため、単にAvatar Forkだけを削除する場合はPackage Managerを使う。
+プロジェクト全体のバックアップは、`Assets`・`Packages`・`ProjectSettings`を含めて別の場所へ保存してください。名前変更を中断した場合は、復元用の`Library/AvatarFork/Rename`も保全してください。
 
 ## 複製が失敗した場合
 
