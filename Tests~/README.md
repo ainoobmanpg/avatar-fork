@@ -41,7 +41,29 @@
 
 `PlacementIdentityRegression.cs`は、配置後のScene間移動と親変更、Sceneの保存・再読み込み・改名、同一Prefabの複数個体と生成Sceneがある状態での個体識別を確認します。配置先を閉じた場合や元の個体を削除した場合は、別個体の自動採用も新規追加も行わず、明示した選択・新規追加だけを受け付けます。作成画面を残した改名後の保存先更新と再配置、生成Sceneの親付き・無効階層・複数個体の改名と手動名維持も確認します。
 
-`HierarchyRegression.cs`では、追加・保存・改名・別の編集を行った後のUndo・Redoで、個体数・名前・Prefabとの接続先・生成ファイルが整合することも確認します。インスタンス生成後・Undo登録後に例外を注入する試験と、Unity強制終了時の復元は含みません。
+`HierarchyRegression.cs`では、追加・保存・改名・別の編集を行った後のUndo・Redoで、個体数・名前・Prefabとの接続先・生成ファイルが整合することも確認します。
+
+`PlacementSafetyRegression.cs`は全試験の実行器に含まれます。誤ったInstanceID、同じPrefabの別個体、Prefabアセット、不一致のPrefab GUID、未保存Sceneの識別子を使って、別個体を自動採用しないことを確認します。Scene移動を直ちにUndo・Redoした後と、Sceneを再読み込みした後の追跡も確認します。これは実際のInstanceID再利用を起こす試験ではなく、不正な候補に対する防御の試験です。
+
+配置の例外注入も行う場合は、検証専用プロジェクトのPlayer SettingsにあるScripting Define Symbolsへ`AVATAR_FORK_TESTS`を追加し、再コンパイルを待ってから実行してください。初回・追加配置のそれぞれで、生成直後、2種類のUndo登録直後、Undoのグループ統合前、追跡状態の更新前後に例外を注入します。生成個体の消去、追加前の追跡状態、直前のUndo・Redoと再試行を確認します。Undoの取り消し自体が失敗した場合の後始末と、その後のUndo・Redoも確認します。シンボルがない場合はこの部分を実行せず、結果の`skipped`へ理由を記録します。通常のコンパイルでは注入用フィールドと呼び出しは含まれません。検証後は追加したシンボルを取り除いてください。
+
+`PlacementPlayModeRegression.cs`は非同期のため全試験とは別に実行します。検証用Sceneを保存してから`Tools > Avatar Fork Tests > Run placement Play Mode test (test project only)`を選びます。Editorの更新を挟んだScene移動のUndo・Redoと再読み込みの後、Play Modeへ移行します。移行中と実行中に配置・再指定を拒否し、終了後に元の個体と個体数を維持することを確認します。追跡状態を保持した経路を試すため、試験中はDomain Reloadを無効、Scene Reloadを有効にし、終了時に元の設定へ戻します。結果は`Library/AvatarFork/Regression/placement-play-mode.json`です。バッチ実行は`-executeMethod AvatarForkPlacementPlayModeRegression.Run`を指定し、`-quit`は付けません。試験完了後に成功なら終了コード0、失敗なら1で終了します。
+
+`AvatarForkPlacementPlayModeRegression.RunWithoutSceneReload`をバッチ実行すると、Domain ReloadとScene Reloadを両方無効にした場合も確認できます。Scene移動の確認後、未保存Sceneの個体を手動で追跡対象にし、Play Modeから戻っても有効な参照を維持することを確認します。結果は`Library/AvatarFork/Regression/placement-play-mode-without-scene-reload.json`です。
+
+これらの試験に、配置案内の実画面・クリック領域の確認は含みません。画面上の操作は別途確認します。
+
+## 改名の強制終了と手動復元
+
+`RunRenameCrashRecovery.py`は、購入素材を含まない検証用プロジェクトの`ProjectSettings`とパッケージ参照を使い、指定した新しい出力先へ使い捨てプロジェクトを作成します。既存の出力先は上書きしません。制作プロジェクトや、その内部を出力先に指定しないでください。検証用テンプレートのAssetsはコピーしません。
+
+```powershell
+python Tests~/RunRenameCrashRecovery.py --unity "Unity.exeのパス" --template "検証用プロジェクト" --package "配布ZIPを展開したフォルダー" --output "新しい使い捨て出力先"
+```
+
+試験用パッケージのコピーだけに停止処理を注入し、最初のファイル移動後、フォルダー移動後、`complete.txt`生成後で、それぞれ起動した検証用Unityプロセスを強制終了します。プロジェクトと復元記録を保全した後、さらに別の復旧用コピーで[手動復元手順](../Documentation~/installation-and-recovery.md#改名の途中でunityが終了した場合)を実行します。未完了操作ではバックアップのSHA-256を照合し、変更途中のフォルダーとmetaをAssetsの外へ退避してから一式を復元します。完了済み操作では新しいファイルを保持します。
+
+復旧用コピーをUnityで開き、ファイル・metaのSHA-256、GUID、参照、Blueprint ID、骨名、重複GUIDの有無と、外部Scene・元素材が保存時のまま残ることを確認します。各地点の結果は出力先の`results.json`、ログと保全済みデータは各プロジェクトに残します。強制終了後の自動復元を製品へ追加する試験ではありません。
 
 ## 配布物の確認
 

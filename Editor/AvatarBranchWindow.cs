@@ -275,15 +275,17 @@ namespace VrcAvatarWorkspace.Branching
                 EditorGUILayout.HelpBox(AvatarForkText.PlacementNote, MessageType.Info);
                 if (!string.IsNullOrEmpty(placementError)) EditorGUILayout.HelpBox(AvatarForkText.PlacementFailed + "\n" + placementError, MessageType.Error);
                 placed = placement?.Resolve();
-                using (new EditorGUI.DisabledScope(placement != null && placement.HasPlaced && placed == null))
+                bool placementBusy = placement?.IsBusy ?? (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling);
+                using (new EditorGUI.DisabledScope(placementBusy || (placement != null && placement.HasPlaced && placed == null)))
                     if (GUILayout.Button(placed == null ? AvatarForkText.AddToHierarchy : AvatarForkText.SelectInHierarchy)) PlaceResult();
                 if (placement != null && placement.HasPlaced && placed == null)
                 {
                     EditorGUILayout.HelpBox(AvatarForkText.PlacementUnresolved, MessageType.Warning);
                     placementChoice = (GameObject)EditorGUILayout.ObjectField(AvatarForkText.ExistingCopy, placementChoice, typeof(GameObject), true);
-                    using (new EditorGUI.DisabledScope(placementChoice == null))
+                    using (new EditorGUI.DisabledScope(placementBusy || placementChoice == null))
                         if (GUILayout.Button(AvatarForkText.UseExistingCopy)) BindResult();
-                    if (GUILayout.Button(AvatarForkText.AddAnotherCopy)) PlaceAnotherResult();
+                    using (new EditorGUI.DisabledScope(placementBusy))
+                        if (GUILayout.Button(AvatarForkText.AddAnotherCopy)) PlaceAnotherResult();
                 }
                 if (GUILayout.Button(AvatarForkText.ShowProject))
                 {
