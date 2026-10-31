@@ -34,7 +34,7 @@ def run(args):
         }
 
         static void RenameMove(string source,''',
-        'moves?.Add(new KeyValuePair<string, string>(source, destination));': 'moves?.Add(new KeyValuePair<string, string>(source, destination));\n            if (moves != null && moves.Count == 1) CrashStop("firstMove");',
+        'moves?.Add(new KeyValuePair<string, string>(source, destination));': 'moves?.Add(new KeyValuePair<string, string>(source, destination));\n            if (moves != null && moves.Count == 1) CrashStop("firstMove");\n            if (moves != null && source == "Assets/CrashCopy") CrashStop("rootMove");',
         'RenameMove(temporary, plan.preview.destination, moves, backup);': 'RenameMove(temporary, plan.preview.destination, moves, backup);\n                        CrashStop("folderMove");',
         'File.WriteAllText(backup + "/complete.txt", "Complete", Utf8);': 'File.WriteAllText(backup + "/complete.txt", "Complete", Utf8);\n                CrashStop("complete");'
     }
@@ -44,7 +44,7 @@ def run(args):
         source = source.replace(old, new)
     path.write_text(source, encoding='utf-8')
     results = {}
-    for stage in ['firstMove', 'folderMove', 'complete']:
+    for stage in ['firstMove', 'rootMove', 'folderMove', 'complete']:
         project = output / stage
         (project / 'Assets/Editor').mkdir(parents=True)
         shutil.copytree(args.template / 'ProjectSettings', project / 'ProjectSettings')
@@ -85,9 +85,14 @@ def run(args):
             moves = [json.loads(line) for line in (operation / 'moves.jsonl').read_text(encoding='utf-8-sig').splitlines()]
             current = recovery / preview['folder']
             for move in moves:
-                if move.get('completed') and move['source'] == str(current.relative_to(recovery)).replace('\\', '/'):
+                if move['source'] == str(current.relative_to(recovery)).replace('\\', '/') and (move.get('completed') or not current.exists() and (recovery / move['destination']).exists()):
                     current = recovery / move['destination']
             assert current.resolve().is_relative_to((recovery / 'Assets').resolve()) and current.is_dir()
+            if stage == 'rootMove':
+                (recovery / 'Library/AvatarFork/current-folder.txt').write_text(current.relative_to(recovery).as_posix(), encoding='utf-8')
+                check = subprocess.run([str(args.unity), '-batchmode', '-nographics', '-projectPath', str(recovery), '-executeMethod', 'AvatarForkRenameCrashRecovery.CheckInterrupted', '-quit', '-logFile', str(recovery / 'interrupted.log')], timeout=240)
+                if check.returncode:
+                    raise RuntimeError('Interrupted-state protection failed: ' + str(recovery))
             quarantine = recovery / 'RecoveryQuarantine'
             quarantine.mkdir()
             shutil.move(str(current), quarantine / current.name)
@@ -108,6 +113,8 @@ def run(args):
         verified = json.loads((recovery / 'Library/AvatarFork/crash-verified.json').read_text())
         assert verified['success']
         results[stage] = verified
+        if stage == 'rootMove':
+            results[stage]['interrupted'] = json.loads((recovery / 'Library/AvatarFork/interrupted-verified.json').read_text())
         (output / 'results.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps({'stage': stage, **verified}, ensure_ascii=True), flush=True)
 

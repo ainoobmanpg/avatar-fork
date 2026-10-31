@@ -12,6 +12,31 @@ using Newtonsoft.Json.Linq;
 
 public static class AvatarForkRenameCrashRecovery
 {
+    public static void CheckInterrupted()
+    {
+        string current = File.ReadAllText("Library/AvatarFork/current-folder.txt");
+        var passed = new List<string>();
+        Action<bool, string> check = (condition, label) => { if (!condition) throw new Exception("FAILED: " + label); passed.Add(label); };
+        bool rejected = false;
+        try { AvatarBrancher.PreviewRename(current, "Retry"); }
+        catch (InvalidOperationException e) { rejected = e.Data.Contains("AvatarFork.RecoveryRequired"); }
+        check(rejected, "restarted Editor offers recovery for the temporary folder without a completed move line");
+        var scene = EditorSceneManager.OpenScene("Assets/CrashFixture/Source.unity", OpenSceneMode.Single);
+        var source = scene.GetRootGameObjects().Single(g => g.name == "Source");
+        rejected = false;
+        try { AvatarBrancher.Create(source, "Assets", "CrashCopy"); }
+        catch (InvalidOperationException e) { rejected = e.Data.Contains("AvatarFork.RecoveryRequired"); }
+        check(rejected && !Directory.Exists("Assets/CrashCopy"), "restarted Editor cannot reuse the old folder");
+        var window = AvatarBranchWindow.Open(source);
+        try
+        {
+            typeof(AvatarBranchWindow).GetField("branchName", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, "CrashCopy");
+            typeof(AvatarBranchWindow).GetMethod("CreateBranch", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(window, null);
+            check((bool)typeof(AvatarBranchWindow).GetField("recoveryRequired", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(window), "creation window retains the recovery instructions state");
+        }
+        finally { window.Close(); }
+        File.WriteAllText("Library/AvatarFork/interrupted-verified.json", new JObject { ["success"] = true, ["checks"] = JArray.FromObject(passed) }.ToString());
+    }
     static string Hash(string path)
     {
         using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(path))).Replace("-", "").ToLowerInvariant();

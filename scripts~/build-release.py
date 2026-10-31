@@ -109,7 +109,7 @@ def build(output):
             zipped.write(tar_data.getvalue())
     listing_path = ROOT / 'vpm' / 'index.json'
     listing = json.loads(listing_path.read_text(encoding='utf-8')) if listing_path.exists() else {
-        'name': 'Avatar Fork Beta', 'id': 'com.ainoobmanpg.avatar-fork.repository',
+        'name': 'Avatar Fork', 'id': 'com.ainoobmanpg.avatar-fork.repository',
         'url': 'https://raw.githubusercontent.com/ainoobmanpg/avatar-fork/main/vpm/index.json',
         'author': 'sakuchichi_vrc', 'packages': {}}
     release_manifest = dict(manifest)

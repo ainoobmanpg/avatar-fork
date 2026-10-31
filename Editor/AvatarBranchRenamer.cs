@@ -56,27 +56,49 @@ namespace VrcAvatarWorkspace.Branching
             return PrepareRename(folder, requestedName).preview;
         }
 
-        static RenamePlan PrepareRename(string folder, string requestedName)
+        static void RequireNoInterruptedRename(params string[] requestedPaths)
         {
-            folder = Normalize(folder).TrimEnd('/');
-            RequireAssetsPath(folder);
-            RequireUnlinkedPath(folder);
             string recoveryRoot = "Library/AvatarFork/Rename";
             if (Directory.Exists(recoveryRoot))
                 foreach (string operation in Directory.GetDirectories(recoveryRoot).Select(p => p + "/operation.json").Where(File.Exists))
                 {
                     string recordFolder = Path.GetDirectoryName(operation);
                     if (File.Exists(recordFolder + "/complete.txt") || File.Exists(recordFolder + "/restored.txt")) continue;
-                    BranchRenamePreview interrupted;
-                    try { interrupted = JsonUtility.FromJson<BranchRenamePreview>(File.ReadAllText(operation, Utf8)); }
+                    try
+                    {
+                        var interrupted = JsonUtility.FromJson<BranchRenamePreview>(File.ReadAllText(operation, Utf8));
+                        if (interrupted == null || string.IsNullOrEmpty(interrupted.folder) || string.IsNullOrEmpty(interrupted.destination))
+                            throw new IOException(AvatarForkText.CorruptRecovery + operation);
+                        var paths = new List<string> { interrupted.folder, interrupted.destination };
+                        string journal = recordFolder + "/moves.jsonl";
+                        if (File.Exists(journal))
+                            foreach (string line in File.ReadLines(journal))
+                            {
+                                var move = JsonUtility.FromJson<RenameMoveRecord>(line);
+                                if (move == null || string.IsNullOrEmpty(move.source) || string.IsNullOrEmpty(move.destination))
+                                    throw new IOException(AvatarForkText.CorruptRecovery + journal);
+                                paths.Add(move.source);
+                                paths.Add(move.destination);
+                            }
+                        paths = paths.Select(candidate => Normalize(candidate).TrimEnd('/')).ToList();
+                        if (paths.Any(candidate => !candidate.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)
+                            || candidate.Split('/').Any(part => part == ".." || part == "." || part.Length == 0)))
+                            throw new IOException(AvatarForkText.CorruptRecovery + operation);
+                        if (paths.Any(candidate => requestedPaths.Any(path => string.Equals(path, candidate, StringComparison.OrdinalIgnoreCase)
+                            || path.StartsWith(candidate + "/", StringComparison.OrdinalIgnoreCase) || candidate.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase))))
+                            throw RecoveryRequired(new InvalidOperationException(AvatarForkText.InterruptedRename + recordFolder));
+                    }
                     catch (Exception error) when (error is ArgumentException || error is IOException)
                     { throw RecoveryRequired(new InvalidOperationException(AvatarForkText.CorruptRecovery + operation, error)); }
-                    if (interrupted == null || string.IsNullOrEmpty(interrupted.folder) || string.IsNullOrEmpty(interrupted.destination))
-                        throw RecoveryRequired(new InvalidOperationException(AvatarForkText.CorruptRecovery + operation));
-                    if (interrupted != null && (string.Equals(folder, interrupted.folder, StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(folder, interrupted.destination, StringComparison.OrdinalIgnoreCase)))
-                        throw RecoveryRequired(new InvalidOperationException(AvatarForkText.InterruptedRename + recordFolder));
                 }
+        }
+
+        static RenamePlan PrepareRename(string folder, string requestedName)
+        {
+            folder = Normalize(folder).TrimEnd('/');
+            RequireAssetsPath(folder);
+            RequireUnlinkedPath(folder);
+            RequireNoInterruptedRename(folder);
             var pending = new Stack<string>();
             pending.Push(folder);
             while (pending.Count > 0)
@@ -106,6 +128,7 @@ namespace VrcAvatarWorkspace.Branching
             string name = RequireBranchName(requestedName);
             string parent = Normalize(Path.GetDirectoryName(folder));
             string destination = parent + "/" + name;
+            RequireNoInterruptedRename(destination);
             if (!string.Equals(folder, destination, StringComparison.OrdinalIgnoreCase)
                 && (Directory.Exists(destination) || File.Exists(destination) || File.Exists(destination + ".meta") || !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(destination))))
                 throw new InvalidOperationException(AvatarForkText.RenameCollision);
@@ -221,7 +244,7 @@ namespace VrcAvatarWorkspace.Branching
             {
                 using (var dirty = new DirtyAssets())
                 {
-                    if (openScenes.Length == SceneManager.sceneCount)
+                    if (openScenes.Count(s => s.isLoaded) == Enumerable.Range(0, SceneManager.sceneCount).Select(SceneManager.GetSceneAt).Count(s => s.isLoaded))
                         temporaryScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
                     foreach (var scene in openScenes)
                         if (!EditorSceneManager.CloseScene(scene, true)) throw new IOException(AvatarForkText.CloseSceneFailed);

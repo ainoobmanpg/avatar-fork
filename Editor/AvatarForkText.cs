@@ -72,6 +72,8 @@ namespace VrcAvatarWorkspace.Branching
         internal static string IncludeMissing => Choose("Shader include not found: ", "Shaderのincludeが見つかりません: ");
         internal static string OutsideInclude => Choose("Shader includes outside the Project are not supported: ", "Project外のShader includeには対応していません: ");
         internal static string IncludeUnresolved => Choose("Could not resolve a Shader include: ", "Shaderのincludeを解決できません: ");
+        internal static string UnsupportedNestedInclude => Choose("Nested Shader includes in this file type are not supported: ", "この形式のファイルに含まれるShaderのincludeには対応していません: ");
+        internal static string Utf8Required => Choose("Save this text asset as UTF-8 before copying: ", "コピーする前に、このテキスト素材をUTF-8で保存してください: ");
         internal static string InvalidName => Choose("This name contains characters or a pattern that cannot be used.", "名前に使えない文字や形式が含まれています。");
         internal static string InvalidNameCharacter => Choose("The character “{0}” cannot be used in a name. Replace it with another character.", "名前に「{0}」は使えません。別の文字に変更してください。");
         internal static string InvalidNameControl => Choose("A name cannot contain control characters such as line breaks or tabs.", "名前に改行やタブなどの制御文字は使えません。");

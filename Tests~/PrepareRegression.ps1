@@ -9,7 +9,7 @@ $encoding = [System.Text.UTF8Encoding]::new($false, $true)
 $null = New-Item -ItemType Directory -Path (Join-Path $target 'Editor')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'BranchFixtureData.cs') -Destination $target
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PlacementPlayModeRegression.cs') -Destination (Join-Path $target 'Editor')
-foreach ($suite in @('Regression','RenameRegression','RenameSafetyRegression','ReleaseRegression','LocalizationRegression','UiReviewRegression','HierarchyRegression','PlacementIdentityRegression','PlacementSafetyRegression')) {
+foreach ($suite in @('Regression','RenameRegression','RenameSafetyRegression','ReleaseRegression','LocalizationRegression','UiReviewRegression','HierarchyRegression','PlacementIdentityRegression','PlacementSafetyRegression','StableReleaseRegression')) {
     $source = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot ($suite + '.cs')), $encoding)
     $source = $source.Replace('class EditorCommand', ('public class AvatarForkTest' + $suite)).Replace('static object Execute()', 'public static object Execute()')
     [System.IO.File]::WriteAllText((Join-Path $target ('Editor/' + $suite + '.cs')), $source, $encoding)
@@ -54,6 +54,7 @@ public static class AvatarForkRegressionRunner
                     suites["hierarchy"] = JToken.FromObject(AvatarForkTestHierarchyRegression.Execute());
                     suites["placementIdentity"] = JToken.FromObject(AvatarForkTestPlacementIdentityRegression.Execute());
                     suites["placementSafety"] = JToken.FromObject(AvatarForkTestPlacementSafetyRegression.Execute());
+                    suites["stable"] = JToken.FromObject(AvatarForkTestStableReleaseRegression.Execute());
                 }
             }
             finally

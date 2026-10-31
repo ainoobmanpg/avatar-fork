@@ -69,7 +69,7 @@ namespace VrcAvatarWorkspace.Branching
         internal const string FailedFolderKey = "AvatarFork.FailedFolder";
         static readonly Regex GuidReference = new Regex(@"\bguid:\s*([0-9a-fA-F]{32})\b", RegexOptions.Compiled);
         static readonly Regex ObjectReference = new Regex(@"\{\s*fileID:\s*-?\d+\s*,\s*guid:\s*([0-9a-fA-F]{32})\s*,\s*type:\s*\d+\s*\}", RegexOptions.Compiled);
-        static readonly Regex Include = new Regex("(#\\s*include(?:_with_pragmas)?\\s*)\"([^\"]+)\"", RegexOptions.Compiled);
+        static readonly Regex Include = new Regex("(#\\s*include(?:_with_pragmas)?\\s*)[\"<]([^\">]+)[\">]", RegexOptions.Compiled);
         static readonly Regex ShaderName = new Regex("\\bShader\\s*\"([^\"]+)\"", RegexOptions.Compiled);
         static readonly Regex WavefrontReference = new Regex(@"(?m)^(\s*(?:mtllib|map_\w+|bump|disp|decal)\s+)([^\r\n]+)", RegexOptions.Compiled);
         static readonly Regex QuotedAsset = new Regex("\"(Assets/[^\"\r\n]+)\"", RegexOptions.Compiled);
@@ -77,7 +77,7 @@ namespace VrcAvatarWorkspace.Branching
         static readonly HashSet<string> NativeExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".asset", ".mat", ".anim", ".controller", ".overrideController", ".prefab", ".unity", ".mask", ".playable", ".renderTexture", ".physicMaterial", ".physicsMaterial2D", ".lighting", ".guiskin", ".flare", ".mixer" };
         static readonly HashSet<string> ShaderExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { ".shader", ".cginc", ".hlsl", ".compute", ".glslinc" };
+            { ".shader", ".cginc", ".hlsl", ".compute", ".glslinc", ".inc", ".h" };
         static readonly HashSet<string> CodeExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".cs", ".dll", ".asmdef", ".asmref", ".js", ".boo", ".rsp" };
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
@@ -137,6 +137,7 @@ namespace VrcAvatarWorkspace.Branching
             if (Enumerable.Range(0, SceneManager.sceneCount).Select(SceneManager.GetSceneAt).Any(s => string.IsNullOrEmpty(s.path) && s.isDirty && !EditorSceneManager.IsPreviewScene(s)))
                 throw new InvalidOperationException(AvatarForkText.UnnamedScene);
             var destination = ResolveDestination(parent, branchName);
+            RequireNoInterruptedRename(destination.folder, source.scene.path, PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(source));
             CheckHierarchy(source);
 
             using (var dirty = new DirtyAssets())
@@ -145,6 +146,7 @@ namespace VrcAvatarWorkspace.Branching
             AssetDatabase.Refresh();
             destination = ResolveDestination(parent, branchName);
             string folder = destination.folder;
+            RequireNoInterruptedRename(folder);
             RequireAssetsPath(folder);
             if (Directory.Exists(folder)) throw new IOException(AvatarForkText.OutputExists);
             Directory.CreateDirectory(folder);
@@ -175,6 +177,7 @@ namespace VrcAvatarWorkspace.Branching
                 foreach (Match match in GuidReference.Matches(File.ReadAllText(report.prefab, Utf8))) DiscoverGuid(plan, match.Groups[1].Value, folder, report.prefab);
                 CollectLiveReferences(plan, source, folder);
                 Discover(plan, folder);
+                RequireNoInterruptedRename(plan.assets.Keys.Concat(new[] { source.scene.path }).ToArray());
                 AssignDestinations(plan, report);
                 report.assets = plan.assets.Values.OrderBy(a => a.source, StringComparer.Ordinal).ToArray();
                 report.shared = plan.shared.OrderBy(p => p, StringComparer.Ordinal).ToArray();
@@ -354,7 +357,7 @@ namespace VrcAvatarWorkspace.Branching
                 foreach (string textPath in new[] { path, path + ".meta" })
                 {
                     if (!IsText(textPath)) continue;
-                    string text = File.ReadAllText(textPath, Utf8);
+                    string text = ReadText(textPath);
                     foreach (Match match in GuidReference.Matches(text)) DiscoverGuid(plan, match.Groups[1].Value, folder, textPath);
                     foreach (Match match in QuotedAsset.Matches(text))
                         if (File.Exists(match.Groups[1].Value)) Enqueue(plan, match.Groups[1].Value, folder);
@@ -365,10 +368,11 @@ namespace VrcAvatarWorkspace.Branching
                     foreach (Match match in WavefrontReference.Matches(File.ReadAllText(path, Utf8)))
                         Enqueue(plan, ResolveInclude(path, match.Groups[2].Value.Trim()), folder);
                 if (!ShaderExtensions.Contains(Path.GetExtension(path))) continue;
-                string shaderText = File.ReadAllText(path, Utf8);
+                string shaderText = ReadText(path);
                 foreach (Match match in Include.Matches(shaderText))
                 {
                     string include = ResolveInclude(path, match.Groups[2].Value);
+                    RequireSupportedInclude(include);
                     if (include != null) Enqueue(plan, include, folder);
                 }
                 foreach (Match match in ShaderName.Matches(shaderText))
@@ -632,7 +636,7 @@ namespace VrcAvatarWorkspace.Branching
             {
                 foreach (var asset in plan.assets.Values)
                     foreach (string path in new[] { asset.destination, asset.destination + ".meta" })
-                        if (IsText(path)) File.WriteAllText(path, Rewrite(File.ReadAllText(path, Utf8), asset.source + (path.EndsWith(".meta", StringComparison.Ordinal) ? ".meta" : ""), plan), Utf8);
+                        if (IsText(path)) File.WriteAllText(path, Rewrite(ReadText(path), asset.source + (path.EndsWith(".meta", StringComparison.Ordinal) ? ".meta" : ""), plan), Utf8);
                 foreach (var material in report.extractedMaterials)
                     File.WriteAllText(material.destination, Rewrite(File.ReadAllText(material.destination, Utf8), material.destination, plan), Utf8);
                 File.WriteAllText(report.prefab, Rewrite(File.ReadAllText(report.prefab, Utf8), report.prefab, plan), Utf8);
@@ -705,7 +709,9 @@ namespace VrcAvatarWorkspace.Branching
                 foreach (var file in new[] { path, path + ".meta" }.Where(File.Exists))
                 {
                     if (!IsText(file)) continue;
-                    string text = File.ReadAllText(file, Utf8);
+                    string text;
+                    try { text = ReadText(file); }
+                    catch (InvalidOperationException error) { problems.Add(error.Message); continue; }
                     foreach (Match match in GuidReference.Matches(text))
                     {
                         string guid = match.Groups[1].Value;
@@ -727,6 +733,19 @@ namespace VrcAvatarWorkspace.Branching
                 }
                 foreach (string dependency in AssetDatabase.GetDependencies(path, true))
                     if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalDependency + path + " → " + dependency);
+                if (ShaderExtensions.Contains(Path.GetExtension(path)))
+                    try
+                    {
+                        foreach (Match match in Include.Matches(ReadText(path)))
+                        {
+                            string include = ResolveInclude(path, match.Groups[2].Value);
+                            RequireSupportedInclude(include);
+                            if (include != null && !Inside(include, report.folder) && !Shared(include))
+                                problems.Add(AvatarForkText.OriginalPath + path + " → " + include);
+                        }
+                    }
+                    catch (Exception error) when (error is IOException || error is InvalidOperationException)
+                    { problems.Add(error.Message); }
                 if (Wavefront(path))
                     foreach (Match match in WavefrontReference.Matches(File.ReadAllText(path, Utf8)))
                     {
@@ -875,6 +894,24 @@ namespace VrcAvatarWorkspace.Branching
             string builtin = Path.Combine(EditorApplication.applicationContentsPath, "CGIncludes", include);
             if (File.Exists(builtin)) return null;
             throw new FileNotFoundException(AvatarForkText.IncludeUnresolved + include + "\nShader: " + owner, include);
+        }
+
+        static void RequireSupportedInclude(string path)
+        {
+            if (path == null || Shared(path) || ShaderExtensions.Contains(Path.GetExtension(path))) return;
+            if (Regex.IsMatch(File.ReadAllText(path, Encoding.UTF8), @"#\s*include(?:_with_pragmas)?\b"))
+                throw new InvalidOperationException(AvatarForkText.UnsupportedNestedInclude + path);
+        }
+
+        static string ReadText(string path)
+        {
+            string text;
+            try { text = File.ReadAllText(path, Utf8); }
+            catch (DecoderFallbackException error) { throw new InvalidOperationException(AvatarForkText.Utf8Required + path, error); }
+            if (ShaderExtensions.Contains(Path.GetExtension(path))
+                && Regex.IsMatch(Include.Replace(text, ""), @"#\s*include(?:_with_pragmas)?\b"))
+                throw new InvalidOperationException(AvatarForkText.UnsupportedNestedInclude + path);
+            return text;
         }
 
         static bool IsText(string path)

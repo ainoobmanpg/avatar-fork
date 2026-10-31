@@ -25,6 +25,7 @@ namespace VrcAvatarWorkspace.Branching
         string resultError;
         string error;
         string failedFolder;
+        bool recoveryRequired;
         string rejectedSelection;
         bool showDetails;
         Vector2 scroll;
@@ -98,6 +99,7 @@ namespace VrcAvatarWorkspace.Branching
             window.candidates = root == null ? Array.Empty<GameObject>() : new[] { root };
             window.error = null;
             window.failedFolder = null;
+            window.recoveryRequired = false;
             window.SetSource(root);
             window.Show();
             return window;
@@ -121,7 +123,7 @@ namespace VrcAvatarWorkspace.Branching
             placementChoice = null;
             placementError = null;
             resultError = null;
-            if (failedFolder == null) error = null;
+            if (failedFolder == null) { error = null; recoveryRequired = false; }
         }
 
         void SetName(string value)
@@ -256,6 +258,7 @@ namespace VrcAvatarWorkspace.Branching
             if (!string.IsNullOrEmpty(error))
             {
                 EditorGUILayout.HelpBox(AvatarForkText.CopyFailed + "\n" + error, MessageType.Error);
+                if (recoveryRequired && GUILayout.Button(AvatarForkText.RecoveryInstructions)) Application.OpenURL(AvatarForkText.RecoveryUrl);
                 if (!string.IsNullOrEmpty(failedFolder))
                 {
                     EditorGUILayout.LabelField(AvatarForkText.FailedDestination, EditorStyles.boldLabel);
@@ -302,6 +305,7 @@ namespace VrcAvatarWorkspace.Branching
             ClearCompletion();
             error = null;
             failedFolder = null;
+            recoveryRequired = false;
             try
             {
                 placement = source == null ? null : new BranchScenePlacement(source);
@@ -313,6 +317,7 @@ namespace VrcAvatarWorkspace.Branching
             {
                 error = exception.Message;
                 failedFolder = exception.Data[AvatarBrancher.FailedFolderKey] as string;
+                recoveryRequired = exception.Data.Contains(AvatarBrancher.RecoveryRequiredKey);
                 Debug.LogError("[Avatar Fork] " + AvatarForkText.CopyFailed + "\n" + error + (failedFolder == null ? "" : "\n" + failedFolder));
             }
             if (result != null) PlaceResult();
