@@ -11,7 +11,7 @@
 
 バッチ実行の場合は同じ準備の後、Unity Editorへ`-batchmode -projectPath "検証専用Unityプロジェクトのパス" -executeMethod AvatarForkRegressionRunner.RunAll -quit -logFile "ログのパス"`を渡します。失敗時は終了コード1です。既存のUnityが同じプロジェクトを開いていないことを確認してください。
 
-複製42条件、一括改名24条件、Scene保護4条件に加え、`ReleaseRegression.cs`で禁止名・入れ子・中断記録・バイナリ素材の停止などを確認します。外部フォルダーを参照するUPM導入時は、Packagesパスの解決も確認します。Unity MCPがなくても実行できます。
+複製42条件、一括改名31条件、Scene保護4条件に加え、`ReleaseRegression.cs`で禁止名・入れ子・中断記録・バイナリ素材の停止などを確認します。外部フォルダーを参照するUPM導入時は、Packagesパスの解決も確認します。Unity MCPがなくても実行できます。
 
 実行器はEnglish・日本語の両方で全試験を実行し、結果を`en`・`ja`別に保存します。`LocalizationRegression.cs`ではAssets直下と選択した親フォルダーへの作成、採番、改名・再複製、禁止先の拒否、言語変更時の入力・完了結果の維持、全表示文言の有無と書式を確認します。試験中だけ製品の言語設定`com.ainoobmanpg.avatar-fork.uiLanguage`を書き換え、終了時に元の値と設定の有無を戻します。この設定は同じPCのUnity Editor間で共有するため、同時に他のUnityで言語設定を変更しないでください。Unityを強制終了すると復元処理を通らないため、開始時の値を控えてください。ほかのEditorPrefsは削除・変更しません。
 
@@ -31,7 +31,7 @@
 
 購入素材・生成済みアバター・個人の検証ログをGitへ追加しない。代表ギミック・SDKの既存検証と、VRChat内の全操作確認は別工程である。
 
-`RenameRegression.cs` も同じ型を使い、Unity内のEditorコマンドとして実行する。日本語・空白・大文字小文字だけの改名、手で付けた名前、後追加ファイル、GUID・参照・再分岐・登録済みBlueprint IDの維持と、未保存時の停止、失敗後の復元を確認する。`AVATAR_FORK_RENAME_REPORT` を指定するとJSONを保存する。試験後は戻り値のworkに示された今回の `Assets/99_検証用/AvatarFork_Rename_*` と一時配置した型を除去する。
+`RenameRegression.cs` も同じ型を使い、Unity内のEditorコマンドとして実行する。日本語・空白・大文字小文字だけの改名、手で付けた名前、後追加ファイル、GUID・参照・再分岐・登録済みBlueprint IDの維持と、未保存時の停止、失敗後の復元を確認する。コピー外の画像・マテリアル・Shader include・モデルの材質・設定のパスを維持して改名できることと、参照切れでは停止することも確認する。`AVATAR_FORK_RENAME_REPORT` を指定するとJSONを保存する。試験後は戻り値のworkに示された今回の `Assets/99_検証用/AvatarFork_Rename_*` と一時配置した型を除去する。
 
 `RenameSafetyRegression.cs` は追加の合成試験。Sceneで手動変更したルート名、複数Sceneの並び順、閉じたSceneの見出しを改名後も維持することと、名前のないSceneがある場合に変更せず停止する4条件を確認する。`AVATAR_FORK_SAFETY_REPORT` を指定するとJSONを保存する。戻り値のsuccessがtrueであることを確認し、workに示された今回の `Assets/99_検証用/AvatarFork_RenameSafety_*` だけを除去する。
 

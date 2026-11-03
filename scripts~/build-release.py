@@ -38,6 +38,12 @@ def build(output):
     version = manifest['version']
     if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?', version):
         raise ValueError('Invalid release version')
+    timestamps = json.loads((ROOT / 'scripts~' / 'release-timestamps.json').read_text(encoding='utf-8'))
+    timestamp = timestamps.get(version)
+    if type(timestamp) is not int or timestamp <= 0:
+        raise ValueError('Add this version and its UTC Unix timestamp to scripts~/release-timestamps.json')
+    if list(timestamps.values()).count(timestamp) != 1:
+        raise ValueError('Each release must have a different timestamp')
     files = {}
     for name in ['package.json', 'README.md', 'LICENSE', 'CHANGELOG.md', 'GLOSSARY.md', 'Editor.meta']:
         path = ROOT / name
@@ -103,6 +109,7 @@ def build(output):
                 item = tarfile.TarInfo(f'{guid}/{leaf}')
                 item.size = len(content)
                 item.mode = 0o644
+                item.mtime = timestamp
                 archive.addfile(item, io.BytesIO(content))
     with (output / unity_name).open('wb') as stream:
         with gzip.GzipFile(filename='', mode='wb', fileobj=stream, mtime=0) as zipped:

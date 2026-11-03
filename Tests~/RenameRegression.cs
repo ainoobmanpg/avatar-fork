@@ -36,7 +36,7 @@ class EditorCommand
             EditorSceneManager.SaveScene(scene, work + "/Source.unity");
             string shaderPath = work + "/Source/Fixture.shader";
             File.WriteAllText(work + "/Source/Fixture.cginc", "float4 FixtureColor() {return float4(1,1,1,1);}");
-            File.WriteAllText(shaderPath, "Shader \"Hidden/AvatarForkRenameFixture\" { Properties { _Color(\"Color\",Color)=(1,1,1,1) } SubShader { Pass { CGPROGRAM\n#pragma vertex vert_img\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n#include \"Fixture.cginc\"\nfloat4 _Color; float4 frag(v2f_img i):SV_Target {return FixtureColor()*_Color;}\nENDCG } } }");
+            File.WriteAllText(shaderPath, "Shader \"Hidden/AvatarForkRenameFixture\" { Properties { _Color(\"Color\",Color)=(1,1,1,1) _MainTex(\"Texture\",2D)=\"white\"{} } SubShader { Pass { CGPROGRAM\n#pragma vertex vert_img\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n#include \"Fixture.cginc\"\nfloat4 _Color; float4 frag(v2f_img i):SV_Target {return FixtureColor()*_Color;}\nENDCG } } }");
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             var material = new Material(AssetDatabase.LoadAssetAtPath<Shader>(shaderPath));
             string materialPath = work + "/Source/元__名前.mat";
@@ -129,6 +129,64 @@ class EditorCommand
             EditorUtility.ClearDirty(material);
             File.WriteAllText(rollbackShader, shaderText);AssetDatabase.ImportAsset(rollbackShader);
             Check(Unchanged(sources) && Unchanged(others), "original and sibling files remain unchanged after failure recovery");
+            string external = work + "/External";
+            Directory.CreateDirectory(external);
+            var pixels = new Texture2D(2, 2);
+            File.WriteAllBytes(external + "/Outside.png", pixels.EncodeToPNG());
+            Object.DestroyImmediate(pixels);
+            File.WriteAllText(external + "/Outside.cginc", "float4 FixtureColor() {return float4(1,1,1,1);}");
+            File.WriteAllText(external + "/Outside.custom", "#include \"Outside.cginc\"\n");
+            File.WriteAllText(external + "/Outside.mtl", "newmtl Outside\nKd 1 1 1\nmap_Kd Outside.png\n");
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            var outsideTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(external + "/Outside.png");
+            var outsideMaterial = new Material(Shader.Find("Unlit/Texture")) { mainTexture = outsideTexture };
+            AssetDatabase.CreateAsset(outsideMaterial, external + "/Outside.mat");
+            customMaterial = AssetDatabase.LoadAssetAtPath<Material>(fourth.assets.Single(x => x.source == materialPath).destination);
+            customMaterial.mainTexture = outsideTexture;
+            EditorUtility.SetDirty(customMaterial);AssetDatabase.SaveAssetIfDirty(customMaterial);
+            fx = AssetDatabase.LoadAssetAtPath<AnimatorController>(fourth.assets.Single(x => x.source.EndsWith("FX.controller")).destination);
+            renamedData = (BranchFixtureData)fx.layers[0].stateMachine.states.Single().state.behaviours.Single();
+            renamedData.materialPath = external + "/Outside.mat";
+            renamedData.texturePath = external + "/Outside.png";
+            renamedData.entries[0].materialPath = external + "/Outside.mat";
+            renamedData.optionalMaterial = outsideMaterial;
+            EditorUtility.SetDirty(renamedData);EditorUtility.SetDirty(fx);AssetDatabase.SaveAssetIfDirty(fx);
+            prefab = PrefabUtility.LoadPrefabContents(fourth.prefab);
+            try { prefab.GetComponent<MeshRenderer>().sharedMaterials = new[] { customMaterial, outsideMaterial };PrefabUtility.SaveAsPrefabAsset(prefab, fourth.prefab); }
+            finally { PrefabUtility.UnloadPrefabContents(prefab); }
+            string copiedInclude = fourth.assets.Single(x => x.source.EndsWith("Fixture.cginc")).destination;
+            File.WriteAllText(rollbackShader, File.ReadAllText(rollbackShader).Replace(copiedInclude, external + "/Outside.custom"));
+            string externalPaths = "path: " + external + "/Outside.mat\npath: \"" + external + "/Outside.png\"\n";
+            File.WriteAllText(fourth.folder + "/References.txt", externalPaths);
+            File.WriteAllText(fourth.folder + "/Outside.obj", "mtllib ../../External/Outside.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl Outside\nf 1 2 3\n");
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            Check(AvatarBrancher.Verify(fourth.folder).problems.Any(p => p.Contains(external + "/Outside.png")), "copy verification still reports external texture references");
+            string missingReference = fourth.folder + "/MissingReference.mat";
+            File.WriteAllText(missingReference, File.ReadAllText(AssetDatabase.GetAssetPath(customMaterial))
+                .Replace(AssetDatabase.AssetPathToGUID(external + "/Outside.png"), "ffffffffffffffffffffffffffffffff"));
+            AssetDatabase.ImportAsset(missingReference, ImportAssetOptions.ForceSynchronousImport);
+            var missingBefore = Hashes(fourth.folder);
+            Check(Reject(() => AvatarBrancher.Rename(fourth.folder, "MissingReference")) && Unchanged(missingBefore)
+                && !Directory.Exists(work + "/Branches/MissingReference"), "missing GUID still rejects rename without changing files");
+            AssetDatabase.DeleteAsset(missingReference);
+            var outsideBefore = Hashes(external);
+            var renamedExternal = AvatarBrancher.Rename(fourth.folder, "外部参照を維持");
+            var externalRenderer = AssetDatabase.LoadAssetAtPath<GameObject>(renamedExternal.prefab).GetComponent<MeshRenderer>();
+            Check(externalRenderer.sharedMaterials[0].mainTexture == outsideTexture && externalRenderer.sharedMaterials[1] == outsideMaterial,
+                "rename preserves external texture and material references");
+            var externalFx = AssetDatabase.LoadAssetAtPath<AnimatorController>(renamedExternal.assets.Single(x => x.source.EndsWith("FX.controller")).destination);
+            var externalData = (BranchFixtureData)externalFx.layers[0].stateMachine.states.Single().state.behaviours.Single();
+            Check(externalData.materialPath == external + "/Outside.mat" && externalData.texturePath == external + "/Outside.png"
+                && externalData.entries[0].materialPath == external + "/Outside.mat" && externalData.optionalMaterial == outsideMaterial
+                && File.ReadAllText(renamedExternal.folder + "/References.txt") == externalPaths, "external serialized references and quoted and plain paths stay unchanged");
+            var externalShader = AssetDatabase.LoadAssetAtPath<Shader>(renamedExternal.assets.Single(x => x.source == shaderPath).destination);
+            Check(File.ReadAllText(AssetDatabase.GetAssetPath(externalShader)).Contains(external + "/Outside.custom")
+                && !ShaderUtil.ShaderHasError(externalShader), "external nested shader include stays unchanged and compiles after rename");
+            Check(File.ReadAllText(renamedExternal.folder + "/Outside.obj").Contains("../../External/Outside.mtl")
+                && AssetDatabase.LoadAssetAtPath<GameObject>(renamedExternal.folder + "/Outside.obj") != null, "external relative model material stays unchanged after rename");
+            Check(renamedExternal.assets.All(x => x.destinationGuid == guids[x.nameKey])
+                && AssetDatabase.LoadAssetAtPath<GameObject>(renamedExternal.prefab).GetComponent<VRC.Core.PipelineManager>().blueprintId == id
+                && Unchanged(outsideBefore) && Unchanged(sources) && Unchanged(others), "rename with external references preserves GUIDs, Blueprint ID, external files, originals and sibling copy");
             var result = new { success = true, checks = Passed.ToArray(), work };
             string reportPath = Environment.GetEnvironmentVariable("AVATAR_FORK_RENAME_REPORT");
             if (!string.IsNullOrEmpty(reportPath)) File.WriteAllText(reportPath, Newtonsoft.Json.JsonConvert.SerializeObject(result, Newtonsoft.Json.Formatting.Indented));

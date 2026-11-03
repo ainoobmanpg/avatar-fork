@@ -46,6 +46,8 @@ UnityのPackage ManagerでAvatar Forkを選び、「Remove」を押します。�
 
 ## 検証の記録と未確認の範囲
 
+配布物を作る際は、`package.json`のバージョンを`scripts~/release-timestamps.json`にも追加し、その版の基準時刻をUTCのUnix秒で記録します。別の版と同じ値は使いません。unitypackage内のファイル時刻にこの値を使い、再生成時の再現性と、更新時のUnityによる変更検知を維持します。
+
 日付ごとの結果は[実装・検証の記録](validation-history.md)にあります。命名・再分岐・参照の独立性・Blueprint IDを含む回帰試験も、この文書から確認できます。
 
 検証コピー1体のWindows向けPrivateアップロードと、VRChatのDesktopモードでの装着・代表的な表示や姿勢の変化は確認済みです。全メニューを直接操作した結果ではありません。VR機器・掴み・着火・接触・発声・他クライアントからの同期は未確認です。

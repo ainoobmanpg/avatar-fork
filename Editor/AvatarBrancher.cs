@@ -700,7 +700,7 @@ namespace VrcAvatarWorkspace.Branching
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
         }
 
-        static List<string> Validate(BranchReport report, bool requireEmptyBlueprintId = true)
+        static List<string> Validate(BranchReport report, bool requireEmptyBlueprintId = true, bool requireIndependentAssets = true)
         {
             var problems = new HashSet<string>(StringComparer.Ordinal);
             foreach (string path in Directory.GetFiles(report.folder, "*", SearchOption.AllDirectories).Select(Normalize)
@@ -718,29 +718,30 @@ namespace VrcAvatarWorkspace.Branching
                         if (BuiltinGuid(guid)) continue;
                         string dependency = AssetDatabase.GUIDToAssetPath(guid);
                         if (string.IsNullOrEmpty(dependency)) problems.Add(AvatarForkText.ReferenceMissing + file + " / " + guid);
-                        else if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalReference + file + " → " + dependency);
+                        else if (requireIndependentAssets && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalReference + file + " → " + dependency);
                     }
                     foreach (Match match in QuotedAsset.Matches(text))
                     {
                         string dependency = match.Groups[1].Value;
-                        if (File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
+                        if (requireIndependentAssets && File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
                     }
                     foreach (Match match in PlainAsset.Matches(text))
                     {
                         string dependency = match.Groups["path"].Value;
-                        if (File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
+                        if (requireIndependentAssets && File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
                     }
                 }
-                foreach (string dependency in AssetDatabase.GetDependencies(path, true))
-                    if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalDependency + path + " → " + dependency);
+                if (requireIndependentAssets)
+                    foreach (string dependency in AssetDatabase.GetDependencies(path, true))
+                        if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalDependency + path + " → " + dependency);
                 if (ShaderExtensions.Contains(Path.GetExtension(path)))
                     try
                     {
                         foreach (Match match in Include.Matches(ReadText(path)))
                         {
                             string include = ResolveInclude(path, match.Groups[2].Value);
-                            RequireSupportedInclude(include);
-                            if (include != null && !Inside(include, report.folder) && !Shared(include))
+                            if (requireIndependentAssets || (include != null && Inside(include, report.folder))) RequireSupportedInclude(include);
+                            if (requireIndependentAssets && include != null && !Inside(include, report.folder) && !Shared(include))
                                 problems.Add(AvatarForkText.OriginalPath + path + " → " + include);
                         }
                     }
@@ -751,9 +752,9 @@ namespace VrcAvatarWorkspace.Branching
                     {
                         string absolute = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path), match.Groups[2].Value.Trim()));
                         string root = Path.GetFullPath(report.folder).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-                        if (!File.Exists(absolute) || !absolute.StartsWith(root, StringComparison.OrdinalIgnoreCase)) problems.Add(AvatarForkText.ExternalModelFile + path + " / " + match.Groups[2].Value);
+                        if (!File.Exists(absolute) || (requireIndependentAssets && !absolute.StartsWith(root, StringComparison.OrdinalIgnoreCase))) problems.Add(AvatarForkText.ExternalModelFile + path + " / " + match.Groups[2].Value);
                     }
-                if (Path.GetExtension(path).Equals(".mat", StringComparison.OrdinalIgnoreCase))
+                if (requireIndependentAssets && Path.GetExtension(path).Equals(".mat", StringComparison.OrdinalIgnoreCase))
                 {
                     var material = AssetDatabase.LoadAssetAtPath<Material>(path);
                     if (material != null && material.parent != null)
@@ -772,7 +773,7 @@ namespace VrcAvatarWorkspace.Branching
                         if (property.propertyType == SerializedPropertyType.String && property.name != "m_Name")
                         {
                             string dependency = property.stringValue;
-                            if (dependency.StartsWith("Assets/", StringComparison.Ordinal) && File.Exists(dependency)
+                            if (requireIndependentAssets && dependency.StartsWith("Assets/", StringComparison.Ordinal) && File.Exists(dependency)
                                 && !Inside(dependency, report.folder) && !Shared(dependency))
                                 problems.Add(AvatarForkText.OriginalStringPath + path + " / " + property.propertyPath + " → " + dependency);
                         }

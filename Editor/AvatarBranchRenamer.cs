@@ -224,7 +224,7 @@ namespace VrcAvatarWorkspace.Branching
                 .SelectMany(s => s.GetRootGameObjects()).SelectMany(g => g.GetComponentsInChildren<Transform>(true)).Select(t => t.gameObject)
                 .Where(g => g.name == plan.preview.previousName && PrefabUtility.GetNearestPrefabInstanceRoot(g) == g
                     && PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(g) == plan.report.prefab).ToArray();
-            var problems = Validate(plan.report, false);
+            var problems = Validate(plan.report, requireEmptyBlueprintId: false, requireIndependentAssets: false);
             if (problems.Count > 0) throw new InvalidOperationException(string.Join("\n", problems.Take(12)));
             if (plan.preview.changes.Length == 0 && plan.preview.previousName == plan.preview.name) return plan.report;
             string backup = "Library/AvatarFork/Rename/" + GUID.Generate();
@@ -290,7 +290,7 @@ namespace VrcAvatarWorkspace.Branching
                     plan.report.branchName = plan.preview.name;
                     WriteReport(plan.report);
                     AssetDatabase.ImportAsset(plan.report.folder + "/" + ReportName, ImportAssetOptions.ForceSynchronousImport);
-                    problems = Validate(plan.report, false);
+                    problems = Validate(plan.report, requireEmptyBlueprintId: false, requireIndependentAssets: false);
                     foreach (var entry in plan.guids)
                     {
                         string path = plan.paths.TryGetValue(entry.Key, out var target) ? target : plan.preview.destination + entry.Key.Substring(plan.preview.folder.Length);

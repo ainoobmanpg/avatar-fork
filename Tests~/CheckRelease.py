@@ -40,6 +40,8 @@ def check(directory):
         source_code = {n: archive.read(n) for n in names if n.startswith('Editor/') and not n.endswith('.meta')}
     unity_path = directory / ('AvatarFork-' + version + '.unitypackage')
     with tarfile.open(unity_path, 'r:gz') as archive:
+        timestamps = {member.mtime for member in archive.getmembers()}
+        assert len(timestamps) == 1 and next(iter(timestamps)) > 0, 'Unity updates need a recorded file timestamp'
         members = archive.getnames()
         assert len(members) == len(set(members))
         roots = {PurePosixPath(n).parts[0] for n in members}
