@@ -142,6 +142,7 @@ class EditorCommand
             root.GetComponent<MeshFilter>().sharedMesh = AssetDatabase.LoadAllAssetsAtPath(modelPath).OfType<Mesh>().First();root.GetComponent<MeshRenderer>().sharedMaterial = embedded;
             var modelBranch = AvatarBrancher.Create(root, work + "/Branches", "EmbeddedMaterial");
             var extractedMaterial = AssetDatabase.LoadAssetAtPath<GameObject>(modelBranch.prefab).GetComponent<MeshRenderer>().sharedMaterial;
+            Check(AssetDatabase.LoadAssetAtPath<GameObject>(Copy(modelBranch, modelPath)).GetComponentInChildren<Renderer>().sharedMaterial == extractedMaterial, "model material remapping is already applied when Create returns");
             Check(modelBranch.extractedMaterials.Length > 0 && extractedMaterial != null && AssetDatabase.GetAssetPath(extractedMaterial).StartsWith(modelBranch.folder + "/") && extractedMaterial.color == embedded.color && AvatarBrancher.Verify(modelBranch.folder).status == "Complete", "embedded model material is extracted with its value and references preserved");
             Check(extractedMaterial.hideFlags == HideFlags.None, "extracted model material can be edited as an ordinary material");
             Check(Path.GetFileName(AssetDatabase.GetAssetPath(extractedMaterial)) == "Embedded_Embedded__EmbeddedMaterial.mat" && extractedMaterial.name == "Embedded_Embedded__EmbeddedMaterial", "embedded materials use model and material names instead of numeric IDs");

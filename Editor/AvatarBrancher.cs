@@ -188,7 +188,7 @@ namespace VrcAvatarWorkspace.Branching
                 RemapModelMaterials(plan, report);
                 RewriteStringReferences(plan, report);
                 RewriteCopies(plan, report);
-                ImportCopies(report);
+                AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
 
                 EditorUtility.DisplayProgressBar(AvatarForkText.CopyTitle, AvatarForkText.CheckReferences, .9f);
                 var problems = Validate(report);
@@ -359,10 +359,13 @@ namespace VrcAvatarWorkspace.Branching
                     if (!IsText(textPath)) continue;
                     string text = ReadText(textPath);
                     foreach (Match match in GuidReference.Matches(text)) DiscoverGuid(plan, match.Groups[1].Value, folder, textPath);
-                    foreach (Match match in QuotedAsset.Matches(text))
-                        if (File.Exists(match.Groups[1].Value)) Enqueue(plan, match.Groups[1].Value, folder);
-                    foreach (Match match in PlainAsset.Matches(text))
-                        if (File.Exists(match.Groups["path"].Value)) Enqueue(plan, match.Groups["path"].Value, folder);
+                    if (text.Contains("Assets/"))
+                    {
+                        foreach (Match match in QuotedAsset.Matches(text))
+                            if (File.Exists(match.Groups[1].Value)) Enqueue(plan, match.Groups[1].Value, folder);
+                        foreach (Match match in PlainAsset.Matches(text))
+                            if (File.Exists(match.Groups["path"].Value)) Enqueue(plan, match.Groups["path"].Value, folder);
+                    }
                 }
                 if (Wavefront(path))
                     foreach (Match match in WavefrontReference.Matches(File.ReadAllText(path, Utf8)))
@@ -680,24 +683,14 @@ namespace VrcAvatarWorkspace.Branching
                     var owner = new Uri(Path.GetFullPath(Path.GetDirectoryName(wavefront.destination)) + Path.DirectorySeparatorChar);
                     return match.Groups[1].Value + Uri.UnescapeDataString(owner.MakeRelativeUri(new Uri(Path.GetFullPath(target.destination))).ToString());
                 });
-            text = QuotedAsset.Replace(text, match => plan.assets.TryGetValue(match.Groups[1].Value, out var asset) ? "\"" + asset.destination + "\"" : match.Value);
-            text = PlainAsset.Replace(text, match => plan.assets.TryGetValue(match.Groups["path"].Value, out var asset) ? match.Groups["prefix"].Value + asset.destination : match.Value);
+            if (text.Contains("Assets/"))
+            {
+                text = QuotedAsset.Replace(text, match => plan.assets.TryGetValue(match.Groups[1].Value, out var asset) ? "\"" + asset.destination + "\"" : match.Value);
+                text = PlainAsset.Replace(text, match => plan.assets.TryGetValue(match.Groups["path"].Value, out var asset) ? match.Groups["prefix"].Value + asset.destination : match.Value);
+            }
             if (source.EndsWith(".meta", StringComparison.Ordinal) && text.Contains("ModelImporter:"))
                 text = Regex.Replace(text, @"(?m)^(\s*materialLocation:)\s*\d+", "$1 1");
             return text;
-        }
-
-        static void ImportCopies(BranchReport report)
-        {
-            AssetDatabase.StartAssetEditing();
-            try
-            {
-                foreach (var asset in report.assets) AssetDatabase.ImportAsset(asset.destination, ImportAssetOptions.ForceUpdate);
-                foreach (var material in report.extractedMaterials) AssetDatabase.ImportAsset(material.destination, ImportAssetOptions.ForceUpdate);
-                AssetDatabase.ImportAsset(report.prefab, ImportAssetOptions.ForceUpdate);
-            }
-            finally { AssetDatabase.StopAssetEditing(); }
-            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
         }
 
         static List<string> Validate(BranchReport report, bool requireEmptyBlueprintId = true, bool requireIndependentAssets = true)
@@ -720,15 +713,18 @@ namespace VrcAvatarWorkspace.Branching
                         if (string.IsNullOrEmpty(dependency)) problems.Add(AvatarForkText.ReferenceMissing + file + " / " + guid);
                         else if (requireIndependentAssets && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalReference + file + " → " + dependency);
                     }
-                    foreach (Match match in QuotedAsset.Matches(text))
+                    if (text.Contains("Assets/"))
                     {
-                        string dependency = match.Groups[1].Value;
-                        if (requireIndependentAssets && File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
-                    }
-                    foreach (Match match in PlainAsset.Matches(text))
-                    {
-                        string dependency = match.Groups["path"].Value;
-                        if (requireIndependentAssets && File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
+                        foreach (Match match in QuotedAsset.Matches(text))
+                        {
+                            string dependency = match.Groups[1].Value;
+                            if (requireIndependentAssets && File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
+                        }
+                        foreach (Match match in PlainAsset.Matches(text))
+                        {
+                            string dependency = match.Groups["path"].Value;
+                            if (requireIndependentAssets && File.Exists(dependency) && !Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalPath + file + " → " + dependency);
+                        }
                     }
                 }
                 if (requireIndependentAssets)

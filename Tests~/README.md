@@ -11,7 +11,7 @@
 
 バッチ実行の場合は同じ準備の後、Unity Editorへ`-batchmode -projectPath "検証専用Unityプロジェクトのパス" -executeMethod AvatarForkRegressionRunner.RunAll -quit -logFile "ログのパス"`を渡します。失敗時は終了コード1です。既存のUnityが同じプロジェクトを開いていないことを確認してください。
 
-複製42条件、一括改名31条件、Scene保護4条件に加え、`ReleaseRegression.cs`で禁止名・入れ子・中断記録・バイナリ素材の停止などを確認します。外部フォルダーを参照するUPM導入時は、Packagesパスの解決も確認します。Unity MCPがなくても実行できます。
+複製43条件、一括改名31条件、Scene保護4条件に加え、`ReleaseRegression.cs`で禁止名・入れ子・中断記録・バイナリ素材の停止などを確認します。モデルの材質は複製完了直後と再インポート後の両方で照合します。外部フォルダーを参照するUPM導入時は、Packagesパスの解決も確認します。Unity MCPがなくても実行できます。
 
 実行器はEnglish・日本語の両方で全試験を実行し、結果を`en`・`ja`別に保存します。`LocalizationRegression.cs`ではAssets直下と選択した親フォルダーへの作成、採番、改名・再複製、禁止先の拒否、言語変更時の入力・完了結果の維持、全表示文言の有無と書式を確認します。試験中だけ製品の言語設定`com.ainoobmanpg.avatar-fork.uiLanguage`を書き換え、終了時に元の値と設定の有無を戻します。この設定は同じPCのUnity Editor間で共有するため、同時に他のUnityで言語設定を変更しないでください。Unityを強制終了すると復元処理を通らないため、開始時の値を控えてください。ほかのEditorPrefsは削除・変更しません。
 
@@ -27,7 +27,7 @@
 
 1. `BranchFixtureData.cs` を検証用Projectの通常のAssetsフォルダーへ一時配置する。Editorフォルダーには置かない。
 2. コンパイル完了後、`Regression.cs` をUnity MCPのEditorコマンド等で実行する。必要ならEditorプロセスの環境変数 `AVATAR_FORK_TEST_REPORT` にJSON出力先を設定する。未設定でも結果は戻り値で得られる。
-3. 成功時は42項目の結果を確認する。作られた `Assets/99_検証用/AvatarBrancher_Regression_*` のうち、戻り値のworkに示された今回のフォルダーと、一時配置した型だけを除去する。元Sceneを保存し直さない。
+3. 成功時は43項目の結果を確認する。作られた `Assets/99_検証用/AvatarBrancher_Regression_*` のうち、戻り値のworkに示された今回のフォルダーと、一時配置した型だけを除去する。元Sceneを保存し直さない。
 
 購入アバターを使う個別試験のコード・素材・生ログはGit管理外へ保全し、合成試験と配布物には含めない。
 
