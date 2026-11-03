@@ -173,7 +173,7 @@ namespace VrcAvatarWorkspace.Branching
                     throw new IOException(AvatarForkText.SavePrefabFailed);
                 if (!IsText(report.prefab))
                     throw new InvalidOperationException(AvatarForkText.BinaryPrefab);
-                foreach (var path in AssetDatabase.GetDependencies(report.prefab, true)) Enqueue(plan, path, folder);
+                foreach (var path in AssetDatabase.GetDependencies(report.prefab, false)) Enqueue(plan, path, folder);
                 foreach (Match match in GuidReference.Matches(File.ReadAllText(report.prefab, Utf8))) DiscoverGuid(plan, match.Groups[1].Value, folder, report.prefab);
                 CollectLiveReferences(plan, source, folder);
                 Discover(plan, folder);
@@ -732,7 +732,7 @@ namespace VrcAvatarWorkspace.Branching
                     }
                 }
                 if (requireIndependentAssets)
-                    foreach (string dependency in AssetDatabase.GetDependencies(path, true))
+                    foreach (string dependency in AssetDatabase.GetDependencies(path, false))
                         if (!Inside(dependency, report.folder) && !Shared(dependency)) problems.Add(AvatarForkText.OriginalDependency + path + " → " + dependency);
                 if (ShaderExtensions.Contains(Path.GetExtension(path)))
                     try

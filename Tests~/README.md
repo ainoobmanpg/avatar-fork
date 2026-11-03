@@ -21,6 +21,8 @@
 
 ## Unity MCP等で個別に実行する
 
+`SharedDependencyRegression.cs`は、共通で使うスクリプトのアイコン・既定の素材、Packages内のマテリアルから参照するAssets内の画像、同じ画像をアバターから直接参照する場合を確認する18条件です。直接参照と入れ子の参照が元へ戻った場合の検出、名前変更・再複製、元ファイルの保護も含みます。`PrepareRegression.ps1`は自作の画像・素材と検証専用の埋め込みパッケージも配置します。制作プロジェクトでは実行しないでください。
+
 `Regression.cs` はEditor内で実行する `EditorCommand.Execute()` の本体。通常インストールへ含めない。
 
 1. `BranchFixtureData.cs` を検証用Projectの通常のAssetsフォルダーへ一時配置する。Editorフォルダーには置かない。
