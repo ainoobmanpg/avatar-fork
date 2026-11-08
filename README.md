@@ -1,8 +1,12 @@
 # Avatar Fork
 
-改変中のアバターを、元とは別に編集できるコピーにするUnity Editor拡張です。現在の見た目やギミックの設定を引き継いだScene・Prefab・素材一式を作ります。作ったコピーから、さらにコピーすることもできます。
+Avatar Forkは改変中のアバターを素材と一緒に複製するUnity Editor拡張です。現在の見た目やギミックの設定を引き継いだScene・Prefab・素材一式を作ります。作ったコピーは元のアバターと別に編集でき、さらに複製することもできます。
+
+色や衣装を変えて試すときなど、今の改変を残したまま編集したい場合に使えます。
 
 **v0.2.1 正式版**です。使う前に、制作プロジェクト全体をバックアップしてください。対応・検証環境はWindows・Unity 2022.3.22f1・VRChat SDK 3.10.5です。Mac・Linuxと他のUnity版は未検証で、すべてのアバター・ギミックの動作を保証するものではありません。
+
+配布ページは[BOOTH](https://sakuchichimilk.booth.pm/items/9116271)です。無料版と100円の「おひねり・開発支援版」は同じ内容で、使える機能も変わりません。
 
 ## 導入
 
@@ -19,8 +23,9 @@
 
 ### unitypackageから導入する
 
-1. [Releases](https://github.com/ainoobmanpg/avatar-fork/releases)から`AvatarFork-<版>.unitypackage`をダウンロードします。
-2. Unityの`Assets > Import Package > Custom Package…`で読み込みます。ツールは`Assets/AvatarFork`に入ります。
+1. [BOOTH](https://sakuchichimilk.booth.pm/items/9116271)または[Releases](https://github.com/ainoobmanpg/avatar-fork/releases)からダウンロードします。
+2. BOOTHの`AvatarFork-<版>.zip`は展開し、中の`AvatarFork-<版>.unitypackage`を取り出します。Releasesからunitypackageを直接ダウンロードした場合は、この手順は不要です。
+3. Unityの`Assets > Import Package > Custom Package…`でunitypackageを読み込みます。ツールは`Assets/AvatarFork`に入ります。
 
 **ALCOM / VCC版とunitypackage版は同時に導入しないでください。** すでに別の方式で入れている場合や、更新・削除する場合は、[更新・削除と導入方式の切り替え](Documentation~/updating-and-removing.md)を確認してください。
 
@@ -56,10 +61,18 @@ Hierarchyで選択するだけでは、開いている画面の複製元は変�
 
 ## 使う前に知っておくこと
 
-- 複製先のBlueprint ID（VRChatのアップロード先ID）は空になります。新規アバターとしてアップロードする状態です。
+- 複製先のBlueprint ID（VRChatのアップロード先ID）は空になります。新規アバターとしてアップロードする状態です。アップロードはツールが自動で行うものではありません。
 - 名前変更ではBlueprint IDを維持します。アップロード済みなら、その後のアップロードも同じアバターの更新になります。
 - SDK・MA・Packages内のShader、スクリプトなどは複製元と共通で使います。変更・更新が他のアバターにも影響することがあります。[コピーするもの・共通で使うもの](Documentation~/copy-details.md#コピーするものと共通で使うもの)を確認してください。
 - 複製に失敗した出力は完成品として使わないでください。名前変更の途中でUnityが強制終了した場合は、[困ったときの対処](Documentation~/installation-and-recovery.md)で復元するまで再実行しないでください。
+
+## お問い合わせ・不具合の報告
+
+お問い合わせは[BOOTHのメッセージ](https://sakuchichimilk.booth.pm/conversations)からお願いします。
+
+Avatar Fork・Unity・OSのバージョン、行った操作、エラーメッセージを添えてください。
+
+購入素材やプロジェクト全体、認証情報は送らず、ユーザー名・保存先・Blueprint IDなどを伏せてください。[問題を報告する前の確認事項](Documentation~/installation-and-recovery.md#問題を報告する)も確認してください。
 
 ## ライセンス
 
